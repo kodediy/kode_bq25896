@@ -476,9 +476,9 @@ esp_err_t bq25896_set_bhot_threshold(bq25896_handle_t handle, bq25896_bhot_t thr
     }
     
     ESP_LOGI(TAG, "Boost hot temperature monitor threshold set to %s", threshold_str);
-        return ESP_OK;
-    }
-    
+    return ESP_OK;
+}
+
 /**
  * @brief Set boost mode cold temperature monitor threshold
  * 
@@ -633,7 +633,7 @@ esp_err_t bq25896_set_boost_frequency(bq25896_handle_t handle, bq25896_boost_fre
     esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG02, 
                                        BQ25896_REG02_BOOST_FREQ_MASK, 
                                        freq << BQ25896_REG02_BOOST_FREQ_SHIFT);
-    if (ret != ESP_OK) {
+        if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set boost frequency");
         return ret;
     }
@@ -672,9 +672,9 @@ esp_err_t bq25896_set_ico(bq25896_handle_t handle, bq25896_ico_state_t state)
     
     ESP_LOGI(TAG, "Input Current Optimizer (ICO) %s", 
              state == BQ25896_ICO_ENABLE ? "enabled" : "disabled");
-    return ESP_OK;
-}
-
+        return ESP_OK;
+    }
+    
 /**
  * @brief Set input source detection state
  * 
@@ -690,10 +690,10 @@ esp_err_t bq25896_set_force_dpdm(bq25896_handle_t handle, bq25896_force_dpdm_sta
     esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG02, 
                                        BQ25896_REG02_FORCE_DPDM_MASK, 
                                        state << BQ25896_REG02_FORCE_DPDM_SHIFT);
-        if (ret != ESP_OK) {
+    if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to %s input detection", 
                  state == BQ25896_FORCE_DPDM_ENABLE ? "force" : "release");
-            return ret;
+        return ret;
     }
     
     ESP_LOGI(TAG, "Input source detection %s", 
@@ -895,5 +895,228 @@ esp_err_t bq25896_set_min_vbat(bq25896_handle_t handle, bq25896_min_vbat_sel_t v
 }
 
 
+/* ####################################################
+*                  REGISTER 04h
+#################################################### */
+/**
+ * @brief Set current pulse control (PUMPX) state
+ * 
+ * @param handle Device handle
+ * @param state BQ25896_PUMPX_ENABLE or BQ25896_PUMPX_DISABLE
+ * @return esp_err_t ESP_OK on success, error otherwise
+ */
+esp_err_t bq25896_set_pumpx(bq25896_handle_t handle, bq25896_pumpx_state_t state)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG04, 
+                                       BQ25896_REG04_EN_PUMPX_MASK, 
+                                       state << BQ25896_REG04_EN_PUMPX_SHIFT);
+        if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to %s current pulse control", 
+                 state == BQ25896_PUMPX_ENABLE ? "enable" : "disable");
+            return ret;
+    }
+    
+    // Update internal config
+    handle->config.enable_pumpx = (state == BQ25896_PUMPX_ENABLE);
+    
+    ESP_LOGI(TAG, "Current pulse control %s", 
+             state == BQ25896_PUMPX_ENABLE ? "enabled" : "disabled");
+    return ESP_OK;
+}
 
+/**
+ * @brief Set fast charge current limit using enum
+ * 
+ * @param handle Device handle
+ * @param ichg Fast charge current limit from bq25896_ichg_t enum
+ * @return esp_err_t ESP_OK on success, error otherwise
+ */
+esp_err_t bq25896_set_charge_current(bq25896_handle_t handle, bq25896_ichg_t ichg)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Clamp value to maximum allowed
+    if (ichg > BQ25896_ICHG_3008MA) {
+        ichg = BQ25896_ICHG_3008MA;
+        ESP_LOGW(TAG, "Charge current clamped to maximum 3008mA");
+    }
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG04, 
+                                       BQ25896_REG04_ICHG_MASK, 
+                                       ichg << BQ25896_REG04_ICHG_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set charge current");
+        return ret;
+    }
+    
+    // Calculate actual current in mA
+    uint16_t current_ma = ichg * 64;
+    
+    // Update internal config
+    handle->config.charge_current_ma = current_ma;
+    
+    ESP_LOGI(TAG, "Fast charge current limit set to %d mA", current_ma);
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 05h
+#################################################### */
+/**
+ * @brief Set precharge current limit
+ * Sets the battery charge current during precharge phase (when battery voltage is below BATLOWV)
+ * 
+ * @param handle Device handle
+ * @param current Precharge current setting from bq25896_prechg_current_t
+ * @return esp_err_t ESP_OK on success, error otherwise
+ */
+esp_err_t bq25896_set_precharge_current(bq25896_handle_t handle, bq25896_prechg_current_t current)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG05, 
+                                       BQ25896_REG05_IPRECHG_MASK,
+                                       current << BQ25896_REG05_IPRECHG_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set precharge current");
+        return ret;
+    }
+    
+    // Calculate actual current
+    uint16_t actual_current = (current + 1) * 64;
+    
+    // Update internal config
+    handle->config.prechg_current_ma = actual_current;
+    
+    ESP_LOGI(TAG, "Precharge current set to %dmA", actual_current);
+    return ESP_OK;
+}
+
+/**
+ * @brief Set termination current limit
+ * Sets the current threshold for charge termination
+ * 
+ * @param handle Device handle
+ * @param current Termination current setting from bq25896_iterm_current_t
+ * @return esp_err_t ESP_OK on success, error otherwise
+ */
+esp_err_t bq25896_set_termination_current(bq25896_handle_t handle, bq25896_iterm_current_t current)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG05, 
+                                       BQ25896_REG05_ITERM_MASK,
+                                       current << BQ25896_REG05_ITERM_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set termination current");
+        return ret;
+    }
+    
+    // Calculate actual current
+    uint16_t actual_current = (current + 1) * 64;
+    
+    // Update internal config
+    handle->config.term_current_ma = actual_current;
+    
+    ESP_LOGI(TAG, "Termination current set to %dmA", actual_current);
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 06h
+#################################################### */
+/**
+ * @brief Set charge voltage limit
+ * Sets the battery charging voltage limit
+ * 
+ * @param handle Device handle
+ * @param vreg Charge voltage setting from bq25896_vreg_t
+ * @return esp_err_t ESP_OK on success, error otherwise
+ */
+esp_err_t bq25896_set_charge_voltage(bq25896_handle_t handle, bq25896_vreg_t vreg)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG06, 
+                                       BQ25896_REG06_VREG_MASK,
+                                       vreg << BQ25896_REG06_VREG_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set charge voltage");
+        return ret;
+    }
+    
+    // Calculate actual voltage
+    uint16_t actual_voltage = 3840 + (vreg * 16);
+    
+    // Update internal config
+    handle->config.charge_voltage_mv = actual_voltage;
+    
+    ESP_LOGI(TAG, "Charge voltage set to %dmV", actual_voltage);
+    return ESP_OK;
+}
+
+/**
+ * @brief Set battery precharge to fast charge threshold
+ * 
+ * @param handle Device handle
+ * @param threshold Threshold setting from bq25896_batlowv_t
+ * @return esp_err_t ESP_OK on success, error otherwise
+ */
+esp_err_t bq25896_set_batlowv(bq25896_handle_t handle, bq25896_batlowv_t threshold)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG06, 
+                                       BQ25896_REG06_BATLOWV_MASK,
+                                       threshold << BQ25896_REG06_BATLOWV_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set BATLOWV threshold");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.batlowv = threshold;
+    
+    ESP_LOGI(TAG, "BATLOWV threshold set to %dmV", 
+             threshold == BQ25896_BATLOWV_2800MV ? 2800 : 3000);
+    return ESP_OK;
+}
+
+/**
+ * @brief Set battery recharge threshold offset
+ * 
+ * @param handle Device handle
+ * @param vrechg Recharge threshold setting from bq25896_vrechg_t
+ * @return esp_err_t ESP_OK on success, error otherwise
+ */
+esp_err_t bq25896_set_vrechg(bq25896_handle_t handle, bq25896_vrechg_t vrechg)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG06, 
+                                       BQ25896_REG06_VRECHG_MASK,
+                                       vrechg << BQ25896_REG06_VRECHG_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set VRECHG threshold");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.vrechg = vrechg;
+    
+    ESP_LOGI(TAG, "VRECHG threshold set to %dmV below VREG", 
+             vrechg == BQ25896_VRECHG_100MV ? 100 : 200);
+    return ESP_OK;
+}
 

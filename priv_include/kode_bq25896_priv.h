@@ -124,19 +124,23 @@ extern "C" {
  * Bit 7: Battery Load (IBATLOAD) Enable
  *     0: Disable (Default)
  *     1: Enable
+ *
  * Bit 6: I2C Watchdog Timer Reset
  *     0: Normal (Default)
  *     1: Reset (Back to 0 after timer reset)
+ *
  * Bit 5: Boost (OTG) Mode Configuration
  *     0: OTG Disable (Default)
  *     1: OTG Enable
  * Bit 4: Charge Enable Configuration
  *     0: Charge Disable
  *     1: Charge Enable (Default)
+ * 
  * Bits 3-1: Minimum System Voltage Limit
  *     Range: 3.0V (000) to 3.7V (111)
  *     Step size: 0.1V
  *     Default: 3.5V (101)
+ *
  * Bit 0: Minimum Battery Voltage (falling) to exit boost mode
  *     0: 2.9V (Default)
  *     1: 2.5V
@@ -155,26 +159,72 @@ extern "C" {
 #define BQ25896_REG03_MIN_VBAT_SEL_SHIFT 0
 
 
-
-
+/* ####################################################
+*                  REGISTER 04h
+#################################################### */
 /**
  * @brief Register 04h (Fast Charge Current Control) bit definitions
+ * 
+ * Bit 7: Current pulse control Enable
+ *     0: Disable Current pulse control(Default)
+ *     1: Enable Current pulse control (PUMPX_UP and PUMPX_DN, see REG09)
+ * 
+ * Bits 6-0: Fast Charge Current Limit
+ *     Range: 0mA (0000000) to 3008mA (0101111)
+ *     Step size: 64mA
+ *     Default: 2048mA (0100000)
+ *     ICHG=000000 (0mA) disables charge
+ *     ICHG>0101111 (3008mA) is clamped to register value 0101111 (3008mA)
  */
 #define BQ25896_REG04_EN_PUMPX_MASK      0x80  // Bit 7: Current pulse control Enable
 #define BQ25896_REG04_EN_PUMPX_SHIFT     7
 #define BQ25896_REG04_ICHG_MASK          0x7F  // Bits 6-0: Fast Charge Current Limit
 #define BQ25896_REG04_ICHG_SHIFT         0
 
+
+/* ####################################################
+*                  REGISTER 05h
+#################################################### */
 /**
  * @brief Register 05h (Pre-Charge/Termination Current Control) bit definitions
+ * 
+ * Bit 7-4: Precharge Current Limit
+ *     Range: 64mA (0000) to 1024mA (1111)
+ *     Step size: 64mA
+ *     Default: 128mA (0001)
+ * 
+ * Bit 3-0: Termination Current Limit
+ *     Range: 64mA (0000) to 1024mA (1111)
+ *     Step size: 64mA
+ *     Default: 256mA (0011)
  */
 #define BQ25896_REG05_IPRECHG_MASK       0xF0  // Bits 7-4: Precharge Current Limit
 #define BQ25896_REG05_IPRECHG_SHIFT      4
 #define BQ25896_REG05_ITERM_MASK         0x0F  // Bits 3-0: Termination Current Limit
 #define BQ25896_REG05_ITERM_SHIFT        0
 
+
+/* ####################################################
+*                  REGISTER 06h
+#################################################### */
 /**
  * @brief Register 06h (Charge Voltage Control) bit definitions
+ * 
+ * Bits 7-2: VREG - Charge Voltage Limit
+ *     Offset: 3.840V
+ *     Range: 3.840V (000000) - 4.608V (110000)
+ *     Step size: 16mV
+ *     Default: 4.208V (010111)
+ *     Note: VREG > 110000 (4.608V) is clamped to register value 110000 (4.608V)
+ * 
+ * Bit 1: BATLOWV - Battery Precharge to Fast Charge Threshold
+ *     0: 2.8V
+ *     1: 3.0V (default)
+ * 
+ * Bit 0: VRECHG - Battery Recharge Threshold Offset
+ *     (below Charge Voltage Limit)
+ *     0: 100mV (VRECHG) below VREG (REG06[7:2]) (default)
+ *     1: 200mV (VRECHG) below VREG (REG06[7:2])
  */
 #define BQ25896_REG06_VREG_MASK          0xFC  // Bits 7-2: Charge Voltage Limit
 #define BQ25896_REG06_VREG_SHIFT         2
@@ -182,6 +232,12 @@ extern "C" {
 #define BQ25896_REG06_BATLOWV_SHIFT      1
 #define BQ25896_REG06_VRECHG_MASK        0x01  // Bit 0: Battery Recharge Threshold
 #define BQ25896_REG06_VRECHG_SHIFT       0
+
+
+
+
+
+
 
 /**
  * @brief Register 07h (Charge Termination/Timer Control) bit definitions

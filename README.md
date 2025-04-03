@@ -8,14 +8,57 @@ The BQ25896 is a high-efficiency single-cell Li-Ion/Li-Polymer battery charger a
 
 ## Key Features
 
-- Fully configurable battery charging
-- Input current limiting and optimization
-- OTG (boost) mode support
-- Power path management
-- JEITA temperature profile support
-- Thermal regulation
-- System voltage monitoring
-- Fault handling
+- **Advanced Charging Control**
+  - Configurable fast charge current up to 3008mA
+  - Precharge and termination current control
+  - Dynamic input current optimization
+  - Temperature-based charging profiles
+  - Safety timer and watchdog protection
+
+- **Input Power Management**
+  - High impedance mode support
+  - ILIM pin and I2C current limit control
+  - Input voltage dynamic power management
+  - USB and adapter input detection
+  - Input current optimizer (ICO)
+
+- **Safety Features**
+  - Thermal regulation and protection
+  - Battery voltage protection
+  - Input voltage protection
+  - Watchdog timer
+  - Safety timers with extension support
+  - NTC temperature monitoring
+
+- **System Power Path Management**
+  - Configurable system voltage regulation
+  - Battery to system power path control
+  - Minimum system voltage protection
+  - Dynamic power source switching
+  - VINDPM threshold control
+
+- **Boost (OTG) Mode Operation**
+  - Configurable output voltage
+  - Current limit protection
+  - Frequency selection (500kHz/1.5MHz)
+  - Temperature monitoring
+  - Battery voltage protection
+
+- **Monitoring and Status**
+  - ADC for voltage and current monitoring
+  - Thermal regulation status
+  - Charging status indication
+  - Fault detection and reporting
+  - Input source detection
+  - Power good indication
+
+- **Advanced Features**
+  - Current pulse control (PUMPX)
+  - IR compensation
+  - JEITA temperature profile support
+  - Boost mode frequency selection
+  - Automatic and manual input detection
+  - Shipping mode support
 
 ## Register Functionality
 
@@ -277,6 +320,38 @@ All these functions are implemented with type-safe enumerations for better code 
 - `bq25896_min_vbat_sel_t`: Sets minimum battery voltage threshold
 
 Each function includes input validation, error handling, and logging for debugging purposes, maintaining consistency with the existing register control implementations.
+
+### REG04 - Fast Charge Current Control
+
+The REG04 register controls the fast charge current and current pulse control features.
+
+#### Bit 7 (EN_PUMPX) - Current Pulse Control Enable
+
+- **Function**: Controls the current pulse control feature
+- **Use Cases**:
+  - Dynamic voltage adjustment
+  - Efficiency optimization
+  - Advanced charging control
+- **Behavior**:
+  - When set to 1: Enables current pulse control
+  - When set to 0: Disables current pulse control (default)
+  - Controls PUMPX_UP and PUMPX_DN functionality in REG09
+
+#### Bits 6-0 (ICHG) - Fast Charge Current Limit
+
+- **Function**: Sets the battery charging current during fast charge phase
+- **Use Cases**:
+  - Battery capacity matching
+  - Thermal management
+  - Charging speed control
+  - Battery longevity optimization
+- **Behavior**:
+  - Range: 0mA to 3008mA
+  - Step size: 64mA
+  - Default: 2048mA (0x20)
+  - Setting to 0mA (0x00) disables charging
+  - Values above 3008mA are clamped to 3008mA
+  - Actual current may be lower due to thermal or input current limitations
 
 ## Key Terminology
 

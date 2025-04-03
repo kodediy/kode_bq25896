@@ -238,8 +238,156 @@ typedef enum {
 } bq25896_min_vbat_sel_t;
 
 
+/* ####################################################
+*                  REGISTER 04h
+#################################################### */
+/**
+ * @brief Current Pulse Control (PUMPX) state
+ */
+typedef enum {
+    BQ25896_PUMPX_DISABLE = 0, // Disable current pulse control (default)
+    BQ25896_PUMPX_ENABLE = 1   // Enable current pulse control
+} bq25896_pumpx_state_t;
+
+/**
+ * @brief Fast Charge Current Limit settings
+ * Note: Values represent current in mA divided by 64
+ */
+typedef enum {
+    BQ25896_ICHG_0MA     = 0x00,  // 0mA (disables charging)
+    BQ25896_ICHG_64MA    = 0x01,  // 64mA
+    BQ25896_ICHG_128MA   = 0x02,  // 128mA
+    BQ25896_ICHG_512MA   = 0x08,  // 512mA
+    BQ25896_ICHG_1024MA  = 0x10,  // 1024mA
+    BQ25896_ICHG_2048MA  = 0x20,  // 2048mA (default)
+    BQ25896_ICHG_3008MA  = 0x2F,  // 3008mA (maximum)
+} bq25896_ichg_t;
 
 
+/* ####################################################
+*                  REGISTER 05h
+#################################################### */
+/**
+ * @brief Precharge Current Limit settings (REG05 [7:4])
+ * Value = (enum value + 1) × 64mA
+ */
+typedef enum {
+    BQ25896_PRECHG_64MA    = 0x0,  // 64mA (minimum)
+    BQ25896_PRECHG_128MA   = 0x1,  // 128mA (default)
+    BQ25896_PRECHG_192MA   = 0x2,  // 192mA
+    BQ25896_PRECHG_256MA   = 0x3,  // 256mA
+    BQ25896_PRECHG_320MA   = 0x4,  // 320mA
+    BQ25896_PRECHG_384MA   = 0x5,  // 384mA
+    BQ25896_PRECHG_448MA   = 0x6,  // 448mA
+    BQ25896_PRECHG_512MA   = 0x7,  // 512mA
+    BQ25896_PRECHG_576MA   = 0x8,  // 576mA
+    BQ25896_PRECHG_640MA   = 0x9,  // 640mA
+    BQ25896_PRECHG_704MA   = 0xA,  // 704mA
+    BQ25896_PRECHG_768MA   = 0xB,  // 768mA
+    BQ25896_PRECHG_832MA   = 0xC,  // 832mA
+    BQ25896_PRECHG_896MA   = 0xD,  // 896mA
+    BQ25896_PRECHG_960MA   = 0xE,  // 960mA
+    BQ25896_PRECHG_1024MA  = 0xF,  // 1024mA (maximum)
+} bq25896_prechg_current_t;
+
+/**
+ * @brief Termination Current Limit settings (REG05 [3:0])
+ * Value = (enum value + 1) × 64mA
+ */
+typedef enum {
+    BQ25896_ITERM_64MA    = 0x0,  // 64mA (minimum)
+    BQ25896_ITERM_128MA   = 0x1,  // 128mA
+    BQ25896_ITERM_192MA   = 0x2,  // 192mA
+    BQ25896_ITERM_256MA   = 0x3,  // 256mA (default)
+    BQ25896_ITERM_320MA   = 0x4,  // 320mA
+    BQ25896_ITERM_384MA   = 0x5,  // 384mA
+    BQ25896_ITERM_448MA   = 0x6,  // 448mA
+    BQ25896_ITERM_512MA   = 0x7,  // 512mA
+    BQ25896_ITERM_576MA   = 0x8,  // 576mA
+    BQ25896_ITERM_640MA   = 0x9,  // 640mA
+    BQ25896_ITERM_704MA   = 0xA,  // 704mA
+    BQ25896_ITERM_768MA   = 0xB,  // 768mA
+    BQ25896_ITERM_832MA   = 0xC,  // 832mA
+    BQ25896_ITERM_896MA   = 0xD,  // 896mA
+    BQ25896_ITERM_960MA   = 0xE,  // 960mA
+    BQ25896_ITERM_1024MA  = 0xF,  // 1024mA (maximum)
+} bq25896_iterm_current_t;
+
+
+/* ####################################################
+*                  REGISTER 06h
+#################################################### */
+/**
+ * @brief Charge Voltage Limit settings (REG06 [7:2])
+ * Value = 3840mV + (enum value × 16mV)
+ */
+typedef enum {
+    BQ25896_VREG_3840MV = 0x00,  // 3.840V (minimum)
+    BQ25896_VREG_3856MV = 0x01,  // 3.856V
+    BQ25896_VREG_3872MV = 0x02,  // 3.872V
+    BQ25896_VREG_3888MV = 0x03,  // 3.888V
+    BQ25896_VREG_3904MV = 0x04,  // 3.904V
+    BQ25896_VREG_3920MV = 0x05,  // 3.920V
+    BQ25896_VREG_3936MV = 0x06,  // 3.936V
+    BQ25896_VREG_3952MV = 0x07,  // 3.952V
+    BQ25896_VREG_3968MV = 0x08,  // 3.968V
+    BQ25896_VREG_3984MV = 0x09,  // 3.984V
+    BQ25896_VREG_4000MV = 0x0A,  // 4.000V
+    BQ25896_VREG_4016MV = 0x0B,  // 4.016V
+    BQ25896_VREG_4032MV = 0x0C,  // 4.032V
+    BQ25896_VREG_4048MV = 0x0D,  // 4.048V
+    BQ25896_VREG_4064MV = 0x0E,  // 4.064V
+    BQ25896_VREG_4080MV = 0x0F,  // 4.080V
+    BQ25896_VREG_4096MV = 0x10,  // 4.096V
+    BQ25896_VREG_4112MV = 0x11,  // 4.112V
+    BQ25896_VREG_4128MV = 0x12,  // 4.128V
+    BQ25896_VREG_4144MV = 0x13,  // 4.144V
+    BQ25896_VREG_4160MV = 0x14,  // 4.160V
+    BQ25896_VREG_4176MV = 0x15,  // 4.176V
+    BQ25896_VREG_4192MV = 0x16,  // 4.192V
+    BQ25896_VREG_4208MV = 0x17,  // 4.208V (default)
+    BQ25896_VREG_4224MV = 0x18,  // 4.224V
+    BQ25896_VREG_4240MV = 0x19,  // 4.240V
+    BQ25896_VREG_4256MV = 0x1A,  // 4.256V
+    BQ25896_VREG_4272MV = 0x1B,  // 4.272V
+    BQ25896_VREG_4288MV = 0x1C,  // 4.288V
+    BQ25896_VREG_4304MV = 0x1D,  // 4.304V
+    BQ25896_VREG_4320MV = 0x1E,  // 4.320V
+    BQ25896_VREG_4336MV = 0x1F,  // 4.336V
+    BQ25896_VREG_4352MV = 0x20,  // 4.352V
+    BQ25896_VREG_4368MV = 0x21,  // 4.368V
+    BQ25896_VREG_4384MV = 0x22,  // 4.384V
+    BQ25896_VREG_4400MV = 0x23,  // 4.400V
+    BQ25896_VREG_4416MV = 0x24,  // 4.416V
+    BQ25896_VREG_4432MV = 0x25,  // 4.432V
+    BQ25896_VREG_4448MV = 0x26,  // 4.448V
+    BQ25896_VREG_4464MV = 0x27,  // 4.464V
+    BQ25896_VREG_4480MV = 0x28,  // 4.480V
+    BQ25896_VREG_4496MV = 0x29,  // 4.496V
+    BQ25896_VREG_4512MV = 0x2A,  // 4.512V
+    BQ25896_VREG_4528MV = 0x2B,  // 4.528V
+    BQ25896_VREG_4544MV = 0x2C,  // 4.544V
+    BQ25896_VREG_4560MV = 0x2D,  // 4.560V
+    BQ25896_VREG_4576MV = 0x2E,  // 4.576V
+    BQ25896_VREG_4592MV = 0x2F,  // 4.592V
+    BQ25896_VREG_4608MV = 0x30   // 4.608V (maximum)
+} bq25896_vreg_t;
+
+/**
+ * @brief Battery Precharge to Fast Charge Threshold settings (REG06 [1])
+ */
+typedef enum {
+    BQ25896_BATLOWV_2800MV = 0,  // 2.8V threshold
+    BQ25896_BATLOWV_3000MV = 1   // 3.0V threshold (default)
+} bq25896_batlowv_t;
+
+/**
+ * @brief Battery Recharge Threshold Offset settings (REG06 [0])
+ */
+typedef enum {
+    BQ25896_VRECHG_100MV = 0,  // 100mV below VREG (default)
+    BQ25896_VRECHG_200MV = 1   // 200mV below VREG
+} bq25896_vrechg_t;
 
 
 /**
