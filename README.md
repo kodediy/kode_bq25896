@@ -102,6 +102,182 @@ The REG01 register configures temperature protection during boost (OTG) mode and
   - When VBUS drops below the calculated threshold, input current is reduced
   - This creates a dynamic response to input voltage droops
 
+### REG02 - Charge Current Control
+
+The REG02 register controls ADC conversion, boost mode frequency, and input source detection features.
+
+#### Bit 7 (CONV_START) - ADC Conversion Control
+
+- **Function**: Controls the start/stop of ADC conversion
+- **Use Cases**:
+  - Manual triggering of ADC measurements
+  - Reading battery voltage, system voltage, and other analog values
+- **Behavior**:
+  - When set to 1: Starts ADC conversion
+  - When set to 0: ADC conversion not active (default)
+  - Read-only when CONV_RATE = 1 (continuous conversion mode)
+  - Bit stays high during ADC conversion and input source detection
+
+#### Bit 6 (CONV_RATE) - ADC Conversion Rate
+
+- **Function**: Selects between one-shot or continuous ADC conversion
+- **Use Cases**:
+  - Continuous monitoring of system parameters
+  - Power-efficient single measurements
+- **Behavior**:
+  - When set to 0: One-shot ADC conversion (default)
+  - When set to 1: Continuous conversion with 1-second interval
+
+#### Bit 5 (BOOST_FREQ) - Boost Mode Frequency
+
+- **Function**: Selects the switching frequency for boost (OTG) mode
+- **Use Cases**:
+  - Optimizing efficiency vs. noise in boost mode
+  - Reducing EMI in sensitive applications
+- **Behavior**:
+  - When set to 0: 1.5MHz operation (default)
+  - When set to 1: 500kHz operation
+  - Note: Write is ignored when OTG_CONFIG is enabled
+
+#### Bit 4 (ICO_EN) - Input Current Optimizer
+
+- **Function**: Enables/disables the Input Current Optimizer algorithm
+- **Use Cases**:
+  - Maximizing input current from power-limited sources
+  - Optimizing charging efficiency
+- **Behavior**:
+  - When set to 1: ICO algorithm enabled (default)
+  - When set to 0: ICO algorithm disabled
+  - Automatically adjusts input current based on source capability
+
+#### Bit 1 (FORCE_DPDM) - Force Input Detection
+
+- **Function**: Forces Power Source Detection
+- **Use Cases**:
+  - Manual triggering of input source detection
+  - Troubleshooting power source identification
+- **Behavior**:
+  - When set to 1: Forces PSEL detection
+  - When set to 0: Not in PSEL detection (default)
+  - Self-clears after detection is complete
+
+#### Bit 0 (AUTO_DPDM) - Automatic Input Detection
+
+- **Function**: Controls automatic power source detection when VBUS is connected
+- **Use Cases**:
+  - Automatic USB/adapter type detection
+  - Plug-and-play charging configuration
+- **Behavior**:
+  - When set to 1: Enables automatic PSEL detection on VBUS connection (default)
+  - When set to 0: Disables automatic detection
+  - Helps configure appropriate charging parameters based on source type
+
+All these functions are implemented with type-safe enumerations for better code reliability:
+- `bq25896_adc_conv_state_t`: Controls ADC conversion start/stop
+- `bq25896_adc_conv_rate_t`: Selects one-shot or continuous conversion
+- `bq25896_boost_freq_t`: Sets boost mode frequency
+- `bq25896_ico_state_t`: Controls Input Current Optimizer
+- `bq25896_force_dpdm_state_t`: Controls manual input detection
+- `bq25896_auto_dpdm_state_t`: Controls automatic input detection
+
+Each function includes validation of input parameters, error handling, and logging for debugging purposes.
+
+### REG03 - Charge Control
+
+The REG03 register controls battery load, watchdog timer, charging modes, and system voltage thresholds.
+
+#### Bit 7 (BAT_LOADEN) - Battery Load Enable
+
+- **Function**: Controls the battery load (IBATLOAD) feature
+- **Use Cases**:
+  - Battery capacity testing
+  - Discharge testing
+  - Battery health assessment
+- **Behavior**:
+  - When set to 1: Enables battery load
+  - When set to 0: Disables battery load (default)
+  - Allows controlled discharge testing of the battery
+
+#### Bit 6 (WD_RST) - Watchdog Timer Reset
+
+- **Function**: Controls the I2C watchdog timer reset
+- **Use Cases**:
+  - Preventing system lockup
+  - Maintaining charging safety
+  - Ensuring communication integrity
+- **Behavior**:
+  - When set to 1: Resets the watchdog timer
+  - When set to 0: Normal operation (default)
+  - Auto-clears after timer reset
+  - Must be periodically reset to prevent charging timeout
+
+#### Bit 5 (OTG_CONFIG) - Boost Mode Configuration
+
+- **Function**: Controls the OTG (boost) mode operation
+- **Use Cases**:
+  - USB OTG power supply
+  - External device powering
+  - Reverse charging applications
+- **Behavior**:
+  - When set to 1: Enables OTG mode
+  - When set to 0: Disables OTG mode (default)
+  - Converts battery voltage to regulated output voltage
+
+#### Bit 4 (CHG_CONFIG) - Charge Enable Configuration
+
+- **Function**: Controls the battery charging function
+- **Use Cases**:
+  - Battery charging control
+  - System power management
+  - Maintenance charging
+- **Behavior**:
+  - When set to 1: Enables charging (default)
+  - When set to 0: Disables charging
+  - Controls the main charging function of the device
+
+#### Bits 3-1 (SYS_MIN) - Minimum System Voltage
+
+- **Function**: Sets the minimum voltage that the system will regulate to
+- **Use Cases**:
+  - System brownout prevention
+  - Battery over-discharge protection
+  - Power path management
+- **Behavior**:
+  - Range: 3.0V (000) to 3.7V (111)
+  - Step size: 100mV
+  - Default: 3.5V (101)
+  - Values:
+    - 000: 3.0V
+    - 001: 3.1V
+    - 010: 3.2V
+    - 011: 3.3V
+    - 100: 3.4V
+    - 101: 3.5V (default)
+    - 110: 3.6V
+    - 111: 3.7V
+
+#### Bit 0 (MIN_VBAT_SEL) - Minimum Battery Voltage Selection
+
+- **Function**: Sets the minimum battery voltage threshold for exiting boost mode
+- **Use Cases**:
+  - Battery protection during OTG operation
+  - System stability management
+  - Deep discharge prevention
+- **Behavior**:
+  - When set to 0: 2.9V threshold (default)
+  - When set to 1: 2.5V threshold
+  - Determines when boost mode operation stops to protect battery
+
+All these functions are implemented with type-safe enumerations for better code reliability:
+- `bq25896_bat_load_state_t`: Controls battery load feature
+- `bq25896_wd_rst_state_t`: Controls watchdog timer reset
+- `bq25896_otg_state_t`: Controls OTG (boost) mode
+- `bq25896_chg_state_t`: Controls charging function
+- `bq25896_sys_min_t`: Sets minimum system voltage
+- `bq25896_min_vbat_sel_t`: Sets minimum battery voltage threshold
+
+Each function includes input validation, error handling, and logging for debugging purposes, maintaining consistency with the existing register control implementations.
+
 ## Key Terminology
 
 ### REGN (Internal Regulated Voltage)
@@ -124,6 +300,70 @@ The chip compares the TS pin voltage to specific percentage thresholds of REGN:
 - Cold thresholds (BCOLD): Higher percentages (77-80% of REGN) indicate lower temperatures
 
 For example, when the TS pin voltage falls below 34.75% of REGN (approximately equivalent to 60°C at the NTC), the hot temperature threshold is triggered. Similarly, when the TS pin voltage rises above 77% of REGN (approximately 0°C), the cold temperature threshold is triggered.
+
+### ADC Conversion System
+
+The BQ25896's ADC (Analog-to-Digital Converter) system provides critical measurements for:
+- Battery voltage (VBAT)
+- System voltage (VSYS)
+- Input voltage (VBUS)
+- Charge current (ICHG)
+- Temperature sensor voltage (TS)
+
+The ADC system can operate in two modes:
+- **One-shot Mode**: Single conversion triggered manually
+- **Continuous Mode**: Automatic conversions every second
+
+When a conversion is in progress, the CONV_START bit remains high until completion. This allows software to monitor the conversion status.
+
+### Input Source Detection (DPDM)
+
+The BQ25896 includes sophisticated input source detection through its DPDM system:
+
+- **DPDM**: Data Plus (D+) and Data Minus (D-) lines detection
+- Automatically identifies USB port types:
+  - Standard Downstream Port (SDP)
+  - Charging Downstream Port (CDP)
+  - Dedicated Charging Port (DCP)
+  - Various proprietary charging schemes
+
+The detection can be triggered in two ways:
+1. **Automatic** (AUTO_DPDM): Triggers when VBUS is connected
+2. **Manual** (FORCE_DPDM): Software-initiated detection
+
+### Input Current Optimization (ICO)
+
+The Input Current Optimizer is an advanced feature that:
+
+- Dynamically maximizes input current based on source capability
+- Prevents source collapse by monitoring input voltage
+- Works in conjunction with VINDPM for optimal power draw
+
+ICO operation sequence:
+1. Gradually increases input current
+2. Monitors input voltage for signs of source stress
+3. Finds and maintains the optimal current level
+4. Periodically retries to find a higher current capability
+
+### Boost Mode Operation
+
+Boost mode (also called OTG mode) converts battery voltage to a regulated output voltage for powering external devices:
+
+- **Frequency Selection**:
+  - 1.5MHz: Higher efficiency, smaller components
+  - 500kHz: Lower EMI, better stability in some applications
+  
+- **Protection Features**:
+  - Over-current protection
+  - Short-circuit protection
+  - Temperature monitoring
+  - Input voltage monitoring
+
+The boost frequency selection (BOOST_FREQ) affects:
+- Switching losses
+- Component size requirements
+- EMI/noise characteristics
+- Overall efficiency
 
 ## How VINDPM Works
 
@@ -164,3 +404,108 @@ bq25896_start_charging(handle);
 ## License
 
 Apache-2.0
+
+### Power Path Management
+
+The BQ25896's power path management system, controlled primarily through REG03, provides:
+
+- **System Voltage Control**:
+  - Maintains stable system voltage above minimum threshold (SYS_MIN)
+  - Prevents system brownout during load transients
+  - Manages power distribution between input source and battery
+  - Supports 3.0V to 3.7V system operation range
+
+- **Operating Modes**:
+  1. Normal Charging Mode:
+     - System powered from input source
+     - Battery charging enabled
+     - System voltage regulated above SYS_MIN
+  2. Battery-Only Mode:
+     - System powered from battery
+     - No input source or HIZ mode enabled
+     - Battery discharge controlled
+  3. Boost (OTG) Mode:
+     - Battery powers external devices
+     - Regulated output voltage
+     - Protected by MIN_VBAT threshold
+
+### Watchdog Protection System
+
+The BQ25896 implements a sophisticated watchdog system that:
+
+- **Prevents System Lock-up**:
+  - Requires periodic communication
+  - Automatically resets to safe state if communication fails
+  - Protects against software failures
+
+- **Timer Operation**:
+  - Must be reset periodically (WD_RST)
+  - Configurable timeout periods
+  - Automatic safety actions on timeout
+  - Affects charging and configuration states
+
+- **Safety Features**:
+  - Automatic charge termination on timeout
+  - Reset to default configuration
+  - Fault reporting
+  - Communication monitoring
+
+### Battery Load Testing
+
+The battery load (IBATLOAD) feature provides:
+
+- **Controlled Discharge Testing**:
+  - Programmable discharge current
+  - Accurate capacity measurement
+  - Battery health assessment
+  - Performance verification
+
+- **Applications**:
+  - Capacity verification
+  - Internal resistance measurement
+  - Age-related degradation assessment
+  - Quality control testing
+
+### System Voltage Regulation
+
+The system voltage regulation feature ensures:
+
+- **Dynamic Voltage Control**:
+  - Maintains minimum system voltage (SYS_MIN)
+  - Prevents battery over-discharge
+  - Supports various system requirements
+  - Automatic source switching
+
+- **Operation Modes**:
+  - Buck mode (charging)
+  - Boost mode (OTG)
+  - Pass-through mode
+  - Battery-only mode
+
+- **Protection Features**:
+  - Under-voltage lockout
+  - Over-voltage protection
+  - Current limiting
+  - Thermal regulation
+
+### Boost Mode Operation
+
+The boost mode (OTG) feature includes:
+
+- **Voltage Boost**:
+  - Converts battery voltage to higher system voltage
+  - Regulated output for external devices
+  - Configurable voltage levels
+  - Current-limited operation
+
+- **Protection Mechanisms**:
+  - Minimum battery voltage monitoring (MIN_VBAT_SEL)
+  - Over-current protection
+  - Thermal monitoring
+  - Input voltage supervision
+
+- **Applications**:
+  - USB OTG power source
+  - External device charging
+  - Backup power systems
+  - Portable power bank functionality

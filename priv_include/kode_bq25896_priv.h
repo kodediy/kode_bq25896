@@ -72,13 +72,33 @@ extern "C" {
 #define BQ25896_REG01_VINDPM_OS_SHIFT    0
 
 
-
-
-
-
-
+/* ####################################################
+*                  REGISTER 02h
+#################################################### */
 /**
  * @brief Register 02h (Charge Current Control) bit definitions
+ * 
+ * Bit 7: ADC Conversion Start Control
+ *     0: ADC conversion not active (Default)
+ *     1: Start ADC conversion
+ *     This bit is read-only when CONV_RATE = 1. The bit stays high during ADC conversion and during input source detection
+ * Bit 6: ADC Conversion Rate Selection
+ *     0: One shot ADC conversion (Default)
+ *     1: Start 1s Continous Conversion
+ * Bit 5: Boost Mode Frequency Selection
+ *     0: 1.5MHz (Default)
+ *     1: 500kHz
+ *     Write to this bit is ignored when OTG_CONFIG is enabled.
+ * Bit 4: Input Current Optimizer (ICO) Enable
+ *     0: Disable ICO Algorithm
+ *     1: Enable ICO Algorithm (Default)
+ * Bits 3-2 are Reserved, Default: 00
+ * Bit 1: Force Input Detection
+ *     0: Not in PSEL detection (Default)
+ *     1: Force PSEL detection
+ * Bit 0: Automatic Input Detection Enable
+ *     0: Disable PSEL detection when VBUS is plugged-in
+ *     1: Enable PSEL detection when VBUS is plugged-in (Default)
  */
 #define BQ25896_REG02_CONV_START_MASK    0x80  // Bit 7: ADC Conversion Start Control
 #define BQ25896_REG02_CONV_START_SHIFT   7
@@ -94,8 +114,32 @@ extern "C" {
 #define BQ25896_REG02_AUTO_DPDM_EN_MASK  0x01  // Bit 0: Automatic Input Detection Enable
 #define BQ25896_REG02_AUTO_DPDM_EN_SHIFT 0
 
+
+/* ####################################################
+*                  REGISTER 03h
+#################################################### */
 /**
  * @brief Register 03h (Charge Control) bit definitions
+ * 
+ * Bit 7: Battery Load (IBATLOAD) Enable
+ *     0: Disable (Default)
+ *     1: Enable
+ * Bit 6: I2C Watchdog Timer Reset
+ *     0: Normal (Default)
+ *     1: Reset (Back to 0 after timer reset)
+ * Bit 5: Boost (OTG) Mode Configuration
+ *     0: OTG Disable (Default)
+ *     1: OTG Enable
+ * Bit 4: Charge Enable Configuration
+ *     0: Charge Disable
+ *     1: Charge Enable (Default)
+ * Bits 3-1: Minimum System Voltage Limit
+ *     Range: 3.0V (000) to 3.7V (111)
+ *     Step size: 0.1V
+ *     Default: 3.5V (101)
+ * Bit 0: Minimum Battery Voltage (falling) to exit boost mode
+ *     0: 2.9V (Default)
+ *     1: 2.5V
  */
 #define BQ25896_REG03_BAT_LOADEN_MASK    0x80  // Bit 7: Battery Load (IBATLOAD) Enable
 #define BQ25896_REG03_BAT_LOADEN_SHIFT   7
@@ -109,6 +153,9 @@ extern "C" {
 #define BQ25896_REG03_SYS_MIN_SHIFT      1
 #define BQ25896_REG03_MIN_VBAT_SEL_MASK  0x01  // Bit 0: Minimum Battery Voltage Selection
 #define BQ25896_REG03_MIN_VBAT_SEL_SHIFT 0
+
+
+
 
 /**
  * @brief Register 04h (Fast Charge Current Control) bit definitions

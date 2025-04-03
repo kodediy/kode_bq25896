@@ -128,16 +128,19 @@ typedef enum {
 } bq25896_vindpm_os_t;
 
 
-
-
-
-
-
-
-
+/* ####################################################
+*                  REGISTER 02h
+#################################################### */
+/**
+ * @brief ADC conversion control state
+ */
+typedef enum {
+    BQ25896_ADC_CONV_STOP  = 0, // Stop ADC conversion
+    BQ25896_ADC_CONV_START = 1  // Start ADC conversion
+} bq25896_adc_conv_state_t;
 
 /**
- * @brief ADC Conversion Rate settings (REG02 [6])
+ * @brief ADC Conversion Rate settings
  */
 typedef enum {
     BQ25896_ADC_CONV_RATE_ONESHOT = 0x00,  // One shot conversion (default)
@@ -145,7 +148,7 @@ typedef enum {
 } bq25896_adc_conv_rate_t;
 
 /**
- * @brief Boost Mode Frequency settings (REG02 [5])
+ * @brief Boost Mode Frequency settings
  */
 typedef enum {
     BQ25896_BOOST_FREQ_1500KHZ = 0x00,  // 1.5MHz (default)
@@ -153,18 +156,91 @@ typedef enum {
 } bq25896_boost_freq_t;
 
 /**
- * @brief Minimum System Voltage settings (REG03 [3:1])
+ * @brief Input Current Optimizer (ICO) state
  */
 typedef enum {
-    BQ25896_SYS_MIN_3000MV = 0x00,  // 3.0V
-    BQ25896_SYS_MIN_3100MV = 0x01,  // 3.1V
-    BQ25896_SYS_MIN_3200MV = 0x02,  // 3.2V
-    BQ25896_SYS_MIN_3300MV = 0x03,  // 3.3V
-    BQ25896_SYS_MIN_3400MV = 0x04,  // 3.4V
-    BQ25896_SYS_MIN_3500MV = 0x05,  // 3.5V (default)
-    BQ25896_SYS_MIN_3600MV = 0x06,  // 3.6V
-    BQ25896_SYS_MIN_3700MV = 0x07,  // 3.7V
+    BQ25896_ICO_DISABLE = 0, // Input Current Optimizer disabled
+    BQ25896_ICO_ENABLE = 1   // Input Current Optimizer enabled
+} bq25896_ico_state_t;
+
+/**
+ * @brief Input Detection Force state
+ */
+typedef enum {
+    BQ25896_FORCE_DPDM_DISABLE = 0, // Not in PSEL detection (default)
+    BQ25896_FORCE_DPDM_ENABLE = 1   // Force PSEL detection
+} bq25896_force_dpdm_state_t;
+
+/**
+ * @brief Automatic Input Detection state
+ */
+typedef enum {
+    BQ25896_AUTO_DPDM_DISABLE = 0, // Disable PSEL detection when VBUS is plugged-in
+    BQ25896_AUTO_DPDM_ENABLE = 1   // Enable PSEL detection when VBUS is plugged-in (default)
+} bq25896_auto_dpdm_state_t;
+
+
+/* ####################################################
+*                  REGISTER 03h
+#################################################### */
+/**
+ * @brief Battery Load state
+ */
+typedef enum {
+    BQ25896_BAT_LOAD_DISABLE = 0, // Battery load disabled (default)
+    BQ25896_BAT_LOAD_ENABLE = 1   // Battery load enabled
+} bq25896_bat_load_state_t;
+
+/**
+ * @brief Watchdog Timer Reset state
+ */
+typedef enum {
+    BQ25896_WD_NORMAL = 0, // Normal operation (default)
+    BQ25896_WD_RESET = 1   // Reset watchdog timer (auto-clears)
+} bq25896_wd_rst_state_t;
+
+/**
+ * @brief OTG (Boost) Mode state
+ */
+typedef enum {
+    BQ25896_OTG_DISABLE = 0, // OTG mode disabled (default)
+    BQ25896_OTG_ENABLE = 1   // OTG mode enabled
+} bq25896_otg_state_t;
+
+/**
+ * @brief Charge Enable state
+ */
+typedef enum {
+    BQ25896_CHG_DISABLE = 0, // Charging disabled
+    BQ25896_CHG_ENABLE = 1   // Charging enabled (default)
+} bq25896_chg_state_t;
+
+/**
+ * @brief Minimum System Voltage settings
+ */
+typedef enum {
+    BQ25896_SYS_MIN_3000MV = 0x00, // 3.0V
+    BQ25896_SYS_MIN_3100MV = 0x01, // 3.1V
+    BQ25896_SYS_MIN_3200MV = 0x02, // 3.2V
+    BQ25896_SYS_MIN_3300MV = 0x03, // 3.3V
+    BQ25896_SYS_MIN_3400MV = 0x04, // 3.4V
+    BQ25896_SYS_MIN_3500MV = 0x05, // 3.5V (default)
+    BQ25896_SYS_MIN_3600MV = 0x06, // 3.6V
+    BQ25896_SYS_MIN_3700MV = 0x07  // 3.7V
 } bq25896_sys_min_t;
+
+/**
+ * @brief Minimum Battery Voltage Selection for boost mode exit
+ */
+typedef enum {
+    BQ25896_MIN_VBAT_2900MV = 0, // 2.9V (default)
+    BQ25896_MIN_VBAT_2500MV = 1  // 2.5V
+} bq25896_min_vbat_sel_t;
+
+
+
+
+
 
 /**
  * @brief Battery Precharge to Fast Charge Threshold settings (REG06 [1])
