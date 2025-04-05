@@ -1,7 +1,6 @@
-/*
- * BQ25896 Battery Charger Driver
+/* SPDX-FileCopyrightText: 2025 KODE DIY SOCIEDAD LIMITADA
  *
- * This file implements the driver for the BQ25896 battery charger.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #include <string.h>
@@ -15,75 +14,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "bq25896";
 
-// Default configuration values to be exposed as BQ25896_DEFAULT_CONFIG
-const bq25896_config_t BQ25896_DEFAULT_CONFIG = {
-    // REG00 - Input Source Control
-    .enable_hiz = false,
-    .enable_ilim_pin = false,
-    .input_current_limit = BQ25896_ILIM_500MA,
-
-    // REG01 - Power-On Configuration
-    .bhot_threshold = BQ25896_BHOT_THRESHOLD1,
-    .bcold_threshold = BQ25896_BCOLD_THRESHOLD0,
-    .vindpm_offset_mv = 600,
-
-    // REG02 - Charge Current Control
-    .adc_conv_rate = BQ25896_ADC_CONV_RATE_ONESHOT,
-    .boost_frequency = BQ25896_BOOST_FREQ_1500KHZ,
-    .enable_ico = true,
-    .auto_dpdm_detection = true,
-
-    // REG03 - Charge Control
-    .enable_bat_load = false,
-    .enable_charging = true,
-    .enable_otg = false,
-    .sys_min_voltage = BQ25896_SYS_MIN_3500MV,
-    .min_vbat_sel = false,
-
-    // REG04 - Fast Charge Current Control
-    .enable_pumpx = false,
-    .charge_current_ma = 2000,
-
-    // REG05 - Pre-Charge/Termination Current Control
-    .prechg_current_ma = 256,
-    .term_current_ma = 256,
-
-    // REG06 - Charge Voltage Control
-    .charge_voltage_mv = 4208,
-    .batlowv = BQ25896_BATLOWV_3000MV,
-    .vrechg = BQ25896_VRECHG_100MV,
-
-    // REG07 - Termination/Timer Control
-    .enable_term = true,
-    .disable_stat_pin = false,
-    .watchdog = BQ25896_WATCHDOG_40S,
-    .enable_safety_timer = true,
-    .chg_timer = BQ25896_CHG_TIMER_12H,
-    .jeita_iset = BQ25896_JEITA_ISET_20PCT,
-
-    // REG08 - IR Compensation/Thermal Regulation Control
-    .bat_comp_mohm = 0,
-    .vclamp_mv = 0,
-    .treg = BQ25896_TREG_120C,
-
-    // REG09 - Operation Control
-    .extend_safety_timer = true,
-    .force_batfet_off = false,
-    .enable_batfet_delay = false,
-    .jeita_vset = BQ25896_JEITA_VSET_VREG_MINUS_200MV,
-    .enable_batfet_reset = true,
-
-    // REG0A - Boost Mode Control
-    .boost_voltage_mv = 5000,
-    .disable_pfm_otg = false,
-    .boost_current_limit = BQ25896_BOOST_LIM_1400MA,
-
-    // REG0D - VINDPM/Input Voltage Limit
-    .vindpm_mode = BQ25896_VINDPM_RELATIVE,
-    .vindpm_voltage_mv = 4400,
-};
 
 // Helper function to read register
 static esp_err_t bq25896_read_reg(bq25896_handle_t handle, uint8_t reg, uint8_t *data)
@@ -223,118 +154,13 @@ esp_err_t bq25896_delete(bq25896_handle_t handle)
     return ESP_OK;
 }
 
-esp_err_t bq25896_reset(bq25896_handle_t handle)
-{
-    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
-    
-    // Write 1 to the register reset bit (REG14[7])
-    esp_err_t ret = bq25896_update_bits(handle, 0x14, BQ25896_REG14_REG_RST_MASK, BQ25896_REG14_REG_RST_MASK);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to reset device");
-        return ret;
-    }
-    
-    // Allow time for the reset to complete
-    vTaskDelay(pdMS_TO_TICKS(50));
-    
-    return ESP_OK;
-}
 
-esp_err_t bq25896_get_default_config(bq25896_config_t *config)
-{
-    ESP_RETURN_ON_FALSE(config != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid config pointer");
-    
-    memcpy(config, &BQ25896_DEFAULT_CONFIG, sizeof(bq25896_config_t));
-    return ESP_OK;
-}
-
-esp_err_t bq25896_configure(bq25896_handle_t handle, const bq25896_config_t *config)
-{
-    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
-    ESP_RETURN_ON_FALSE(config != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid config");
-    
-    esp_err_t ret;
-    
-    // Store configuration in handle
-    memcpy(&handle->config, config, sizeof(bq25896_config_t));
-    
-    // Configure REG00 (Input Source Control)
-    uint8_t reg00_val = 0;
-    if (config->enable_hiz) {
-        reg00_val |= BQ25896_REG00_ENHIZ_MASK;
-    }
-    if (config->enable_ilim_pin) {
-        reg00_val |= BQ25896_REG00_EN_ILIM_MASK;
-    }
-    reg00_val |= config->input_current_limit & BQ25896_REG00_IINLIM_MASK;
-    ret = bq25896_write_reg(handle, 0x00, reg00_val);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to configure REG00");
-        return ret;
-    }
-    
-    // Configure REG01 (Power-On Configuration)
-    uint8_t reg01_val = 0;
-    reg01_val |= ((config->bhot_threshold << BQ25896_REG01_BHOT_SHIFT) & BQ25896_REG01_BHOT_MASK);
-    if (config->bcold_threshold == BQ25896_BCOLD_THRESHOLD1) {
-        reg01_val |= BQ25896_REG01_BCOLD_MASK;
-    }
-    // Calculate VINDPM offset bits
-    uint8_t vindpm_offset = (config->vindpm_offset_mv / 100);
-    if (vindpm_offset > 0x1F) {
-        vindpm_offset = 0x1F;  // Maximum 31 * 100mV = 3100mV
-    }
-    reg01_val |= (vindpm_offset & BQ25896_REG01_VINDPM_OS_MASK);
-    ret = bq25896_write_reg(handle, 0x01, reg01_val);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to configure REG01");
-        return ret;
-    }
-
-    // Continue with additional configuration registers...
-    // Here we'll implement REG02 as an example
-
-    // Configure REG02 (Charge Current Control)
-    uint8_t reg02_val = 0;
-    if (config->adc_conv_rate == BQ25896_ADC_CONV_RATE_CONTINUOUS) {
-        reg02_val |= BQ25896_REG02_CONV_RATE_MASK;
-    }
-    if (config->boost_frequency == BQ25896_BOOST_FREQ_500KHZ) {
-        reg02_val |= BQ25896_REG02_BOOST_FREQ_MASK;
-    }
-    if (config->enable_ico) {
-        reg02_val |= BQ25896_REG02_ICO_EN_MASK;
-    }
-    if (config->auto_dpdm_detection) {
-        reg02_val |= BQ25896_REG02_AUTO_DPDM_EN_MASK;
-    }
-    ret = bq25896_write_reg(handle, 0x02, reg02_val);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to configure REG02");
-        return ret;
-    }
-    
-    // The rest of the registers would follow the same pattern.
-    // For brevity in this example, we'll implement some of the most important ones
-    // In a real implementation, all registers should be configured.
-
-    ESP_LOGI(TAG, "BQ25896 basic configuration completed");
-    return ESP_OK;
-}
 
 
 
 /* ####################################################
 *                  REGISTER 00h
 #################################################### */
-/**
- * @brief Set High Impedance mode (HIZ)
- * When enabled, the input current from the input source is reduced to 0
- * 
- * @param handle Device handle
- * @param state BQ25896_HIZ_ENABLE or BQ25896_HIZ_DISABLE
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_hiz_mode(bq25896_handle_t handle, bq25896_hiz_state_t state)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -355,15 +181,6 @@ esp_err_t bq25896_set_hiz_mode(bq25896_handle_t handle, bq25896_hiz_state_t stat
     return ESP_OK;
 }
 
-/**
- * @brief Set ILIM pin current limit control
- * When enabled, the input current limit is determined by ILIM pin
- * When disabled, input current limit is set by I2C register
- * 
- * @param handle Device handle
- * @param state BQ25896_ILIM_PIN_ENABLE or BQ25896_ILIM_PIN_DISABLE
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_ilim_pin(bq25896_handle_t handle, bq25896_ilim_pin_state_t state)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -387,13 +204,6 @@ esp_err_t bq25896_set_ilim_pin(bq25896_handle_t handle, bq25896_ilim_pin_state_t
     return ESP_OK;
 }
 
-/**
- * @brief Set input current limit using enum value
- * 
- * @param handle Device handle
- * @param ilim Current limit from bq25896_ilim_t enum
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_input_current_limit(bq25896_handle_t handle, bq25896_ilim_t ilim)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -429,17 +239,6 @@ esp_err_t bq25896_set_input_current_limit(bq25896_handle_t handle, bq25896_ilim_
 /* ####################################################
 *                  REGISTER 01h
 #################################################### */
-/**
- * @brief Set boost mode hot temperature monitor threshold
- * 
- * @param handle Device handle
- * @param threshold One of the following:
- *                 BQ25896_BHOT_THRESHOLD1 (34.75%, default)
- *                 BQ25896_BHOT_THRESHOLD0 (37.75%)
- *                 BQ25896_BHOT_THRESHOLD2 (31.25%)
- *                 BQ25896_BHOT_DISABLED (Thermal protection disabled)
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_bhot_threshold(bq25896_handle_t handle, bq25896_bhot_t threshold)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -479,15 +278,6 @@ esp_err_t bq25896_set_bhot_threshold(bq25896_handle_t handle, bq25896_bhot_t thr
     return ESP_OK;
 }
 
-/**
- * @brief Set boost mode cold temperature monitor threshold
- * 
- * @param handle Device handle
- * @param threshold One of the following:
- *                  BQ25896_BCOLD_THRESHOLD0 (77%, default)
- *                  BQ25896_BCOLD_THRESHOLD1 (80%)
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_bcold_threshold(bq25896_handle_t handle, bq25896_bcold_t threshold)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -500,7 +290,7 @@ esp_err_t bq25896_set_bcold_threshold(bq25896_handle_t handle, bq25896_bcold_t t
         ESP_LOGE(TAG, "Failed to set BCOLD threshold");
         return ret;
     }
-    
+
     // Update internal config
     handle->config.bcold_threshold = threshold;
     
@@ -509,17 +299,6 @@ esp_err_t bq25896_set_bcold_threshold(bq25896_handle_t handle, bq25896_bcold_t t
     return ESP_OK;
 }
 
-/**
- * @brief Set input voltage limit offset
- * 
- * This offset is added to the measured VBUS when calculating VINDPM threshold
- * when FORCE_VINDPM = 0 (REG0D[7] = 0). When VBUS at no load is ≤ 6V, this offset
- * is used directly. When VBUS at no load is > 6V, this offset is multiplied by 2.
- * 
- * @param handle Device handle
- * @param offset VINDPM offset from bq25896_vindpm_os_t enum
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_vindpm_offset(bq25896_handle_t handle, bq25896_vindpm_os_t offset)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -548,14 +327,6 @@ esp_err_t bq25896_set_vindpm_offset(bq25896_handle_t handle, bq25896_vindpm_os_t
 /* ####################################################
 *                  REGISTER 02h
 #################################################### */
-/**
- * @brief Control ADC conversion
- * Note: This bit is read-only when CONV_RATE = 1
- * 
- * @param handle Device handle
- * @param state BQ25896_ADC_CONV_START or BQ25896_ADC_CONV_STOP
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_adc_conversion(bq25896_handle_t handle, bq25896_adc_conv_state_t state)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -589,13 +360,6 @@ esp_err_t bq25896_set_adc_conversion(bq25896_handle_t handle, bq25896_adc_conv_s
     return ESP_OK;
 }
 
-/**
- * @brief Set ADC conversion rate
- * 
- * @param handle Device handle
- * @param rate BQ25896_ADC_CONV_RATE_ONESHOT or BQ25896_ADC_CONV_RATE_CONTINUOUS
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_adc_conversion_rate(bq25896_handle_t handle, bq25896_adc_conv_rate_t rate)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -617,14 +381,6 @@ esp_err_t bq25896_set_adc_conversion_rate(bq25896_handle_t handle, bq25896_adc_c
     return ESP_OK;
 }
 
-/**
- * @brief Set boost mode frequency
- * Note: Write is ignored when OTG_CONFIG is enabled ----------- TBD, need to check this register before write
- * 
- * @param handle Device handle
- * @param freq BQ25896_BOOST_FREQ_1500KHZ or BQ25896_BOOST_FREQ_500KHZ
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_boost_frequency(bq25896_handle_t handle, bq25896_boost_freq_t freq)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -633,7 +389,7 @@ esp_err_t bq25896_set_boost_frequency(bq25896_handle_t handle, bq25896_boost_fre
     esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG02, 
                                        BQ25896_REG02_BOOST_FREQ_MASK, 
                                        freq << BQ25896_REG02_BOOST_FREQ_SHIFT);
-        if (ret != ESP_OK) {
+    if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set boost frequency");
         return ret;
     }
@@ -646,13 +402,6 @@ esp_err_t bq25896_set_boost_frequency(bq25896_handle_t handle, bq25896_boost_fre
     return ESP_OK;
 }
 
-/**
- * @brief Set Input Current Optimizer (ICO) state
- * 
- * @param handle Device handle
- * @param state BQ25896_ICO_ENABLE or BQ25896_ICO_DISABLE
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_ico(bq25896_handle_t handle, bq25896_ico_state_t state)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -672,16 +421,8 @@ esp_err_t bq25896_set_ico(bq25896_handle_t handle, bq25896_ico_state_t state)
     
     ESP_LOGI(TAG, "Input Current Optimizer (ICO) %s", 
              state == BQ25896_ICO_ENABLE ? "enabled" : "disabled");
-        return ESP_OK;
-    }
-    
-/**
- * @brief Set input source detection state
- * 
- * @param handle Device handle
- * @param state BQ25896_FORCE_DPDM_ENABLE or BQ25896_FORCE_DPDM_DISABLE
- * @return esp_err_t ESP_OK on success, error otherwise
- */
+    return ESP_OK;
+}
 esp_err_t bq25896_set_force_dpdm(bq25896_handle_t handle, bq25896_force_dpdm_state_t state)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -701,13 +442,6 @@ esp_err_t bq25896_set_force_dpdm(bq25896_handle_t handle, bq25896_force_dpdm_sta
     return ESP_OK;
 }
 
-/**
- * @brief Set automatic input source detection state
- * 
- * @param handle Device handle
- * @param state BQ25896_AUTO_DPDM_ENABLE or BQ25896_AUTO_DPDM_DISABLE
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_auto_dpdm(bq25896_handle_t handle, bq25896_auto_dpdm_state_t state)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -733,13 +467,6 @@ esp_err_t bq25896_set_auto_dpdm(bq25896_handle_t handle, bq25896_auto_dpdm_state
 /* ####################################################
 *                  REGISTER 03h
 #################################################### */
-/**
- * @brief Enable/disable battery load
- * 
- * @param handle Device handle
- * @param state BQ25896_BAT_LOAD_ENABLE or BQ25896_BAT_LOAD_DISABLE
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_bat_load(bq25896_handle_t handle, bq25896_bat_load_state_t state)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -760,12 +487,6 @@ esp_err_t bq25896_set_bat_load(bq25896_handle_t handle, bq25896_bat_load_state_t
     return ESP_OK;
 }
 
-/**
- * @brief Reset the watchdog timer
- * 
- * @param handle Device handle
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_reset_watchdog(bq25896_handle_t handle)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -783,20 +504,13 @@ esp_err_t bq25896_reset_watchdog(bq25896_handle_t handle)
     return ESP_OK;
 }
 
-/**
- * @brief Set OTG (boost) mode state
- * 
- * @param handle Device handle
- * @param state BQ25896_OTG_ENABLE or BQ25896_OTG_DISABLE
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_otg(bq25896_handle_t handle, bq25896_otg_state_t state)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
     
     // Update the register
     esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG03, 
-                                       BQ25896_REG03_OTG_CONFIG_MASK, 
+                           BQ25896_REG03_OTG_CONFIG_MASK, 
                                        state << BQ25896_REG03_OTG_CONFIG_SHIFT);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to %s OTG mode", state == BQ25896_OTG_ENABLE ? "enable" : "disable");
@@ -810,13 +524,6 @@ esp_err_t bq25896_set_otg(bq25896_handle_t handle, bq25896_otg_state_t state)
     return ESP_OK;
 }
 
-/**
- * @brief Set charging state
- * 
- * @param handle Device handle
- * @param state BQ25896_CHG_ENABLE or BQ25896_CHG_DISABLE
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_charging(bq25896_handle_t handle, bq25896_chg_state_t state)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -837,13 +544,6 @@ esp_err_t bq25896_set_charging(bq25896_handle_t handle, bq25896_chg_state_t stat
     return ESP_OK;
 }
 
-/**
- * @brief Set minimum system voltage
- * 
- * @param handle Device handle
- * @param sys_min Minimum system voltage selection from bq25896_sys_min_t
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_sys_min(bq25896_handle_t handle, bq25896_sys_min_t sys_min)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -865,13 +565,6 @@ esp_err_t bq25896_set_sys_min(bq25896_handle_t handle, bq25896_sys_min_t sys_min
     return ESP_OK;
 }
 
-/**
- * @brief Set minimum battery voltage for boost mode exit
- * 
- * @param handle Device handle
- * @param vbat_sel BQ25896_MIN_VBAT_2900MV or BQ25896_MIN_VBAT_2500MV
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_min_vbat(bq25896_handle_t handle, bq25896_min_vbat_sel_t vbat_sel)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -898,13 +591,6 @@ esp_err_t bq25896_set_min_vbat(bq25896_handle_t handle, bq25896_min_vbat_sel_t v
 /* ####################################################
 *                  REGISTER 04h
 #################################################### */
-/**
- * @brief Set current pulse control (PUMPX) state
- * 
- * @param handle Device handle
- * @param state BQ25896_PUMPX_ENABLE or BQ25896_PUMPX_DISABLE
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_pumpx(bq25896_handle_t handle, bq25896_pumpx_state_t state)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -913,10 +599,10 @@ esp_err_t bq25896_set_pumpx(bq25896_handle_t handle, bq25896_pumpx_state_t state
     esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG04, 
                                        BQ25896_REG04_EN_PUMPX_MASK, 
                                        state << BQ25896_REG04_EN_PUMPX_SHIFT);
-        if (ret != ESP_OK) {
+    if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to %s current pulse control", 
                  state == BQ25896_PUMPX_ENABLE ? "enable" : "disable");
-            return ret;
+        return ret;
     }
     
     // Update internal config
@@ -927,13 +613,6 @@ esp_err_t bq25896_set_pumpx(bq25896_handle_t handle, bq25896_pumpx_state_t state
     return ESP_OK;
 }
 
-/**
- * @brief Set fast charge current limit using enum
- * 
- * @param handle Device handle
- * @param ichg Fast charge current limit from bq25896_ichg_t enum
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_charge_current(bq25896_handle_t handle, bq25896_ichg_t ichg)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -967,14 +646,6 @@ esp_err_t bq25896_set_charge_current(bq25896_handle_t handle, bq25896_ichg_t ich
 /* ####################################################
 *                  REGISTER 05h
 #################################################### */
-/**
- * @brief Set precharge current limit
- * Sets the battery charge current during precharge phase (when battery voltage is below BATLOWV)
- * 
- * @param handle Device handle
- * @param current Precharge current setting from bq25896_prechg_current_t
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_precharge_current(bq25896_handle_t handle, bq25896_prechg_current_t current)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -998,14 +669,6 @@ esp_err_t bq25896_set_precharge_current(bq25896_handle_t handle, bq25896_prechg_
     return ESP_OK;
 }
 
-/**
- * @brief Set termination current limit
- * Sets the current threshold for charge termination
- * 
- * @param handle Device handle
- * @param current Termination current setting from bq25896_iterm_current_t
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_termination_current(bq25896_handle_t handle, bq25896_iterm_current_t current)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -1033,14 +696,6 @@ esp_err_t bq25896_set_termination_current(bq25896_handle_t handle, bq25896_iterm
 /* ####################################################
 *                  REGISTER 06h
 #################################################### */
-/**
- * @brief Set charge voltage limit
- * Sets the battery charging voltage limit
- * 
- * @param handle Device handle
- * @param vreg Charge voltage setting from bq25896_vreg_t
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_charge_voltage(bq25896_handle_t handle, bq25896_vreg_t vreg)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -1064,13 +719,6 @@ esp_err_t bq25896_set_charge_voltage(bq25896_handle_t handle, bq25896_vreg_t vre
     return ESP_OK;
 }
 
-/**
- * @brief Set battery precharge to fast charge threshold
- * 
- * @param handle Device handle
- * @param threshold Threshold setting from bq25896_batlowv_t
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_batlowv(bq25896_handle_t handle, bq25896_batlowv_t threshold)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -1092,13 +740,6 @@ esp_err_t bq25896_set_batlowv(bq25896_handle_t handle, bq25896_batlowv_t thresho
     return ESP_OK;
 }
 
-/**
- * @brief Set battery recharge threshold offset
- * 
- * @param handle Device handle
- * @param vrechg Recharge threshold setting from bq25896_vrechg_t
- * @return esp_err_t ESP_OK on success, error otherwise
- */
 esp_err_t bq25896_set_vrechg(bq25896_handle_t handle, bq25896_vrechg_t vrechg)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
@@ -1120,3 +761,1303 @@ esp_err_t bq25896_set_vrechg(bq25896_handle_t handle, bq25896_vrechg_t vrechg)
     return ESP_OK;
 }
 
+
+/* ####################################################
+*                  REGISTER 07h
+#################################################### */
+esp_err_t bq25896_set_termination_state(bq25896_handle_t handle, bq25896_term_state_t state)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG07, 
+                                       BQ25896_REG07_EN_TERM_MASK,
+                                       state << BQ25896_REG07_EN_TERM_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set termination state");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.termination_enabled = (state == BQ25896_TERM_ENABLE);
+    
+    ESP_LOGI(TAG, "Charging termination %s", 
+             state == BQ25896_TERM_ENABLE ? "enabled" : "disabled");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_stat_pin_state(bq25896_handle_t handle, bq25896_stat_pin_state_t state)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG07, 
+                                       BQ25896_REG07_STAT_DIS_MASK,
+                                       state << BQ25896_REG07_STAT_DIS_SHIFT);
+        if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set STAT pin state");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.stat_pin_enabled = (state == BQ25896_STAT_ENABLE);
+    
+    ESP_LOGI(TAG, "STAT pin %s", 
+             state == BQ25896_STAT_ENABLE ? "enabled" : "disabled");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_watchdog_timer(bq25896_handle_t handle, bq25896_watchdog_t watchdog)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG07, 
+                                       BQ25896_REG07_WATCHDOG_MASK,
+                                       watchdog << BQ25896_REG07_WATCHDOG_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set watchdog timer");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.watchdog = watchdog;
+    
+    const char *watchdog_str;
+    switch (watchdog) {
+        case BQ25896_WATCHDOG_DISABLE: watchdog_str = "disabled"; break;
+        case BQ25896_WATCHDOG_40S: watchdog_str = "40 seconds"; break;
+        case BQ25896_WATCHDOG_80S: watchdog_str = "80 seconds"; break;
+        case BQ25896_WATCHDOG_160S: watchdog_str = "160 seconds"; break;
+        default: watchdog_str = "unknown"; break;
+    }
+    
+    ESP_LOGI(TAG, "Watchdog timer set to %s", watchdog_str);
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_safety_timer_state(bq25896_handle_t handle, bq25896_safety_timer_state_t state)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG07, 
+                                       BQ25896_REG07_EN_TIMER_MASK,
+                                       state << BQ25896_REG07_EN_TIMER_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set safety timer state");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.safety_timer_enabled = (state == BQ25896_SAFETY_TIMER_ENABLE);
+    
+    ESP_LOGI(TAG, "Safety timer %s", 
+             state == BQ25896_SAFETY_TIMER_ENABLE ? "enabled" : "disabled");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_charge_timer(bq25896_handle_t handle, bq25896_chg_timer_t timer)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG07, 
+                                       BQ25896_REG07_CHG_TIMER_MASK,
+                                       timer << BQ25896_REG07_CHG_TIMER_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set charge timer");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.chg_timer = timer;
+    
+    const char *timer_str;
+    switch (timer) {
+        case BQ25896_CHG_TIMER_5H: timer_str = "5 hours"; break;
+        case BQ25896_CHG_TIMER_8H: timer_str = "8 hours"; break;
+        case BQ25896_CHG_TIMER_12H: timer_str = "12 hours"; break;
+        case BQ25896_CHG_TIMER_20H: timer_str = "20 hours"; break;
+        default: timer_str = "unknown"; break;
+    }
+    
+    ESP_LOGI(TAG, "Fast charge timer set to %s", timer_str);
+    return ESP_OK;
+}
+    
+esp_err_t bq25896_set_jeita_iset(bq25896_handle_t handle, bq25896_jeita_iset_t iset)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG07, 
+                                       BQ25896_REG07_JEITA_ISET_MASK,
+                                       iset << BQ25896_REG07_JEITA_ISET_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set JEITA low temperature current");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.jeita_iset = iset;
+    
+    ESP_LOGI(TAG, "JEITA low temperature current set to %d%% of ICHG", 
+             iset == BQ25896_JEITA_ISET_50PCT ? 50 : 20);
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 08h
+#################################################### */
+esp_err_t bq25896_set_bat_comp(bq25896_handle_t handle, bq25896_bat_comp_t bat_comp)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG08, 
+                                       BQ25896_REG08_BAT_COMP_MASK,
+                                       bat_comp << BQ25896_REG08_BAT_COMP_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set IR compensation resistor");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.bat_comp = bat_comp;
+    
+    // Calculate actual value for logging
+    uint8_t mohm_value = 0;
+    switch (bat_comp) {
+        case BQ25896_BAT_COMP_0MO:    mohm_value = 0;   break;
+        case BQ25896_BAT_COMP_20MO:   mohm_value = 20;  break;
+        case BQ25896_BAT_COMP_40MO:   mohm_value = 40;  break;
+        case BQ25896_BAT_COMP_60MO:   mohm_value = 60;  break;
+        case BQ25896_BAT_COMP_80MO:   mohm_value = 80;  break;
+        case BQ25896_BAT_COMP_100MO:  mohm_value = 100; break;
+        case BQ25896_BAT_COMP_120MO:  mohm_value = 120; break;
+        case BQ25896_BAT_COMP_140MO:  mohm_value = 140; break;
+    }
+    
+    ESP_LOGI(TAG, "IR compensation resistor set to %dmΩ", mohm_value);
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_vclamp(bq25896_handle_t handle, bq25896_vclamp_t vclamp)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG08, 
+                                       BQ25896_REG08_VCLAMP_MASK,
+                                       vclamp << BQ25896_REG08_VCLAMP_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set IR compensation voltage clamp");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.vclamp = vclamp;
+    
+    // Calculate actual value for logging
+    uint8_t mv_value = 0;
+    switch (vclamp) {
+        case BQ25896_VCLAMP_0MV:    mv_value = 0;   break;
+        case BQ25896_VCLAMP_32MV:   mv_value = 32;  break;
+        case BQ25896_VCLAMP_64MV:   mv_value = 64;  break;
+        case BQ25896_VCLAMP_96MV:   mv_value = 96;  break;
+        case BQ25896_VCLAMP_128MV:  mv_value = 128; break;
+        case BQ25896_VCLAMP_160MV:  mv_value = 160; break;
+        case BQ25896_VCLAMP_192MV:  mv_value = 192; break;
+        case BQ25896_VCLAMP_224MV:  mv_value = 224; break;
+    }
+    
+    ESP_LOGI(TAG, "IR compensation voltage clamp set to %dmV above VREG", mv_value);
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_treg(bq25896_handle_t handle, bq25896_treg_t treg)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG08, 
+                                       BQ25896_REG08_TREG_MASK,
+                                       treg << BQ25896_REG08_TREG_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set thermal regulation threshold");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.treg = treg;
+    
+    // Calculate actual value for logging
+    uint8_t degree_value = 0;
+    switch (treg) {
+        case BQ25896_TREG_60C:   degree_value = 60;  break;
+        case BQ25896_TREG_80C:   degree_value = 80;  break;
+        case BQ25896_TREG_100C:  degree_value = 100; break;
+        case BQ25896_TREG_120C:  degree_value = 120; break;
+    }
+    
+    ESP_LOGI(TAG, "Thermal regulation threshold set to %d°C", degree_value);
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 09h
+#################################################### */
+esp_err_t bq25896_force_ico(bq25896_handle_t handle)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Set the FORCE_ICO bit to trigger ICO
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG09, 
+                                       BQ25896_REG09_FORCE_ICO_MASK,
+                                       1 << BQ25896_REG09_FORCE_ICO_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to force ICO");
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "Forced ICO started");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_timer_extension(bq25896_handle_t handle, bq25896_tmr2x_t state)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG09, 
+                                       BQ25896_REG09_TMR2X_EN_MASK,
+                                       state << BQ25896_REG09_TMR2X_EN_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set timer extension state");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.tmr2x_enabled = (state == BQ25896_TMR2X_ENABLE);
+    
+    ESP_LOGI(TAG, "Safety timer extension %s", 
+             state == BQ25896_TMR2X_ENABLE ? "enabled" : "disabled");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_batfet_state(bq25896_handle_t handle, bq25896_batfet_state_t state)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG09, 
+                                       BQ25896_REG09_BATFET_DIS_MASK,
+                                       state << BQ25896_REG09_BATFET_DIS_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set BATFET state");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.batfet_disabled = (state == BQ25896_BATFET_DISABLE);
+    
+    ESP_LOGI(TAG, "BATFET %s", 
+             state == BQ25896_BATFET_ENABLE ? "enabled" : "disabled (ship mode)");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_jeita_vset(bq25896_handle_t handle, bq25896_jeita_vset_t vset)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG09, 
+                                       BQ25896_REG09_JEITA_VSET_MASK,
+                                       vset << BQ25896_REG09_JEITA_VSET_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set JEITA high temperature voltage");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.jeita_vset = vset;
+    
+    ESP_LOGI(TAG, "JEITA high temperature voltage set to %s", 
+             vset == BQ25896_JEITA_VSET_REDUCED ? "VREG-200mV" : "VREG");
+    return ESP_OK;
+}
+    
+esp_err_t bq25896_set_batfet_delay(bq25896_handle_t handle, bq25896_batfet_dly_t delay)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG09, 
+                                       BQ25896_REG09_BATFET_DLY_MASK,
+                                       delay << BQ25896_REG09_BATFET_DLY_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set BATFET turn off delay");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.batfet_dly = delay;
+    
+    ESP_LOGI(TAG, "BATFET turn off delay %s", 
+             delay == BQ25896_BATFET_DLY_ENABLE ? "enabled" : "disabled");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_batfet_reset(bq25896_handle_t handle, bq25896_batfet_rst_t reset)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG09, 
+                                       BQ25896_REG09_BATFET_RST_EN_MASK,
+                                       reset << BQ25896_REG09_BATFET_RST_EN_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set BATFET full system reset");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.batfet_rst_en = reset;
+    
+    ESP_LOGI(TAG, "BATFET full system reset %s", 
+             reset == BQ25896_BATFET_RST_ENABLE ? "enabled" : "disabled");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_pumpx_up(bq25896_handle_t handle)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Check if EN_PUMPX is enabled
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG04, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG04");
+        return ret;
+    }
+    
+    if (!(reg_val & BQ25896_REG04_EN_PUMPX_MASK)) {
+        ESP_LOGE(TAG, "EN_PUMPX must be enabled before PUMPX_UP");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Set the PUMPX_UP bit
+    ret = bq25896_update_bits(handle, BQ25896_REG09, 
+                            BQ25896_REG09_PUMPX_UP_MASK,
+                            1 << BQ25896_REG09_PUMPX_UP_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set PUMPX_UP");
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "Current pulse control voltage up triggered");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_pumpx_down(bq25896_handle_t handle)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Check if EN_PUMPX is enabled
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG04, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG04");
+        return ret;
+    }
+    
+    if (!(reg_val & BQ25896_REG04_EN_PUMPX_MASK)) {
+        ESP_LOGE(TAG, "EN_PUMPX must be enabled before PUMPX_DOWN");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Set the PUMPX_DN bit
+    ret = bq25896_update_bits(handle, BQ25896_REG09, 
+                            BQ25896_REG09_PUMPX_DN_MASK,
+                            1 << BQ25896_REG09_PUMPX_DN_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set PUMPX_DOWN");
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "Current pulse control voltage down triggered");
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 0Ah
+#################################################### */
+esp_err_t bq25896_set_boost_voltage(bq25896_handle_t handle, bq25896_boostv_t boostv)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG0A, 
+                                       BQ25896_REG0A_BOOSTV_MASK,
+                                       boostv << BQ25896_REG0A_BOOSTV_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set boost voltage");
+        return ret;
+    }
+    
+    // Calculate actual voltage for logging and config
+    uint16_t actual_voltage = 4550 + (boostv * 64);
+    
+    // Update internal config
+    handle->config.boost_voltage_mv = actual_voltage;
+    
+    ESP_LOGI(TAG, "Boost mode voltage set to %dmV", actual_voltage);
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_pfm_boost_mode(bq25896_handle_t handle, bq25896_pfm_boost_t pfm_state)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG0A, 
+                                       BQ25896_REG0A_PFM_OTG_DIS_MASK,
+                                       pfm_state << BQ25896_REG0A_PFM_OTG_DIS_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set PFM boost mode");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.pfm_boost_disabled = (pfm_state == BQ25896_PFM_BOOST_DISABLE);
+    
+    ESP_LOGI(TAG, "PFM in boost mode %s", 
+             pfm_state == BQ25896_PFM_BOOST_ALLOW ? "allowed" : "disabled");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_boost_current_limit(bq25896_handle_t handle, bq25896_boost_lim_t boost_lim)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Check for reserved value
+    if (boost_lim > BQ25896_BOOST_LIM_2150MA) {
+        ESP_LOGE(TAG, "Invalid boost current limit value (reserved)");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG0A, 
+                                       BQ25896_REG0A_BOOST_LIM_MASK,
+                                       boost_lim << BQ25896_REG0A_BOOST_LIM_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set boost current limit");
+        return ret;
+    }
+    
+    // Calculate actual current for logging and config
+    uint16_t actual_current = 0;
+    switch (boost_lim) {
+        case BQ25896_BOOST_LIM_500MA:  actual_current = 500;  break;
+        case BQ25896_BOOST_LIM_750MA:  actual_current = 750;  break;
+        case BQ25896_BOOST_LIM_1200MA: actual_current = 1200; break;
+        case BQ25896_BOOST_LIM_1400MA: actual_current = 1400; break;
+        case BQ25896_BOOST_LIM_1650MA: actual_current = 1650; break;
+        case BQ25896_BOOST_LIM_1875MA: actual_current = 1875; break;
+        case BQ25896_BOOST_LIM_2150MA: actual_current = 2150; break;
+        default: actual_current = 0; break;
+    }
+    
+    // Update internal config
+    handle->config.boost_current_limit_ma = actual_current;
+    
+    ESP_LOGI(TAG, "Boost mode current limit set to %dmA", actual_current);
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 0Bh
+#################################################### */
+esp_err_t bq25896_get_vbus_status(bq25896_handle_t handle, bq25896_vbus_stat_t *vbus_stat)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(vbus_stat != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid vbus_stat pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0B, &reg_val);
+        if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0B");
+            return ret;
+        }
+    
+    *vbus_stat = (reg_val & BQ25896_REG0B_VBUS_STAT_MASK) >> BQ25896_REG0B_VBUS_STAT_SHIFT;
+    
+    // Log the status
+    const char *status_str;
+    switch (*vbus_stat) {
+        case BQ25896_VBUS_STAT_NO_INPUT:  status_str = "No Input"; break;
+        case BQ25896_VBUS_STAT_USB_HOST:  status_str = "USB Host SDP"; break;
+        case BQ25896_VBUS_STAT_ADAPTER:   status_str = "Adapter (3.25A)"; break;
+        case BQ25896_VBUS_STAT_OTG:       status_str = "OTG"; break;
+        default:                          status_str = "Unknown"; break;
+    }
+    
+    ESP_LOGD(TAG, "VBUS Status: %s", status_str);
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_charging_status(bq25896_handle_t handle, bq25896_chrg_stat_t *chrg_stat)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(chrg_stat != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid chrg_stat pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0B, &reg_val);
+        if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0B");
+            return ret;
+    }
+    
+    *chrg_stat = (reg_val & BQ25896_REG0B_CHRG_STAT_MASK) >> BQ25896_REG0B_CHRG_STAT_SHIFT;
+    
+    // Log the status
+    const char *status_str;
+    switch (*chrg_stat) {
+        case BQ25896_CHRG_STAT_NOT_CHARGING:  status_str = "Not Charging"; break;
+        case BQ25896_CHRG_STAT_PRE_CHARGE:    status_str = "Pre-charge"; break;
+        case BQ25896_CHRG_STAT_FAST_CHARGING: status_str = "Fast Charging"; break;
+        case BQ25896_CHRG_STAT_TERM_DONE:     status_str = "Charge Termination Done"; break;
+        default:                              status_str = "Unknown"; break;
+    }
+    
+    ESP_LOGD(TAG, "Charging Status: %s", status_str);
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_pg_status(bq25896_handle_t handle, bq25896_pg_stat_t *pg_stat)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(pg_stat != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid pg_stat pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0B, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0B");
+        return ret;
+    }
+    
+    *pg_stat = (reg_val & BQ25896_REG0B_PG_STAT_MASK) >> BQ25896_REG0B_PG_STAT_SHIFT;
+    
+    ESP_LOGD(TAG, "Power Good Status: %s", 
+             *pg_stat == BQ25896_PG_STAT_GOOD ? "Good" : "Not Good");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_vsys_status(bq25896_handle_t handle, bq25896_vsys_stat_t *vsys_stat)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(vsys_stat != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid vsys_stat pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0B, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0B");
+        return ret;
+    }
+    
+    *vsys_stat = (reg_val & BQ25896_REG0B_VSYS_STAT_MASK) >> BQ25896_REG0B_VSYS_STAT_SHIFT;
+    
+    ESP_LOGD(TAG, "VSYS Status: %s", 
+             *vsys_stat == BQ25896_VSYS_STAT_IN_REG ? 
+             "In VSYSMIN regulation (BAT < VSYSMIN)" : 
+             "Not in VSYSMIN regulation (BAT > VSYSMIN)");
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 0Ch
+#################################################### */
+esp_err_t bq25896_get_watchdog_fault(bq25896_handle_t handle, bq25896_watchdog_fault_t *fault)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(fault != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid fault pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0C, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0C");
+        return ret;
+    }
+    
+    *fault = (reg_val & BQ25896_REG0C_WATCHDOG_FAULT_MASK) >> BQ25896_REG0C_WATCHDOG_FAULT_SHIFT;
+    
+    ESP_LOGD(TAG, "Watchdog Fault Status: %s", 
+             *fault == BQ25896_WD_FAULT_NORMAL ? "Normal" : "Watchdog timer expiration");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_boost_fault(bq25896_handle_t handle, bq25896_boost_fault_t *fault)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(fault != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid fault pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0C, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0C");
+        return ret;
+    }
+    
+    *fault = (reg_val & BQ25896_REG0C_BOOST_FAULT_MASK) >> BQ25896_REG0C_BOOST_FAULT_SHIFT;
+    
+    ESP_LOGD(TAG, "Boost Mode Fault Status: %s", 
+             *fault == BQ25896_BOOST_FAULT_NORMAL ? "Normal" : 
+             "VBUS overloaded, OVP, or battery too low");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_charge_fault(bq25896_handle_t handle, bq25896_chrg_fault_t *fault)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(fault != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid fault pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0C, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0C");
+        return ret;
+    }
+    
+    *fault = (reg_val & BQ25896_REG0C_CHRG_FAULT_MASK) >> BQ25896_REG0C_CHRG_FAULT_SHIFT;
+    
+    // Log the status
+    const char *status_str;
+    switch (*fault) {
+        case BQ25896_CHRG_FAULT_NORMAL:       status_str = "Normal"; break;
+        case BQ25896_CHRG_FAULT_INPUT_FAULT:  status_str = "Input fault"; break;
+        case BQ25896_CHRG_FAULT_THERMAL:      status_str = "Thermal shutdown"; break;
+        case BQ25896_CHRG_FAULT_TIMER_EXPIRED: status_str = "Safety Timer Expiration"; break;
+        default:                              status_str = "Unknown"; break;
+    }
+    
+    ESP_LOGD(TAG, "Charge Fault Status: %s", status_str);
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_battery_fault(bq25896_handle_t handle, bq25896_bat_fault_t *fault)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(fault != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid fault pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0C, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0C");
+        return ret;
+    }
+    
+    *fault = (reg_val & BQ25896_REG0C_BAT_FAULT_MASK) >> BQ25896_REG0C_BAT_FAULT_SHIFT;
+    
+    ESP_LOGD(TAG, "Battery Fault Status: %s", 
+             *fault == BQ25896_BAT_FAULT_NORMAL ? "Normal" : "Battery Overvoltage");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_ntc_fault(bq25896_handle_t handle, bq25896_ntc_fault_t *fault)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(fault != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid fault pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0C, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0C");
+        return ret;
+    }
+    
+    *fault = (reg_val & BQ25896_REG0C_NTC_FAULT_MASK) >> BQ25896_REG0C_NTC_FAULT_SHIFT;
+    
+    // Log the status
+    const char *status_str;
+    switch (*fault) {
+        case BQ25896_NTC_FAULT_NORMAL:  status_str = "Normal"; break;
+        case BQ25896_NTC_FAULT_TS_WARM: status_str = "TS Warm"; break;
+        case BQ25896_NTC_FAULT_TS_COOL: status_str = "TS Cool"; break;
+        case BQ25896_NTC_FAULT_TS_COLD: status_str = "TS Cold"; break;
+        case BQ25896_NTC_FAULT_TS_HOT:  status_str = "TS Hot"; break;
+        default:                        status_str = "Unknown"; break;
+    }
+    
+    ESP_LOGD(TAG, "NTC Fault Status: %s", status_str);
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 0Dh
+#################################################### */
+esp_err_t bq25896_set_vindpm_mode(bq25896_handle_t handle, bq25896_force_vindpm_t mode)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Update the register
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG0D, 
+                                       BQ25896_REG0D_FORCE_VINDPM_MASK,
+                                       mode << BQ25896_REG0D_FORCE_VINDPM_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set VINDPM mode");
+        return ret;
+    }
+    
+    // Update internal config
+    handle->config.vindpm_mode = mode;
+    
+    ESP_LOGI(TAG, "VINDPM threshold setting method set to %s", 
+             mode == BQ25896_VINDPM_RELATIVE ? "Relative" : "Absolute");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_set_absolute_vindpm(bq25896_handle_t handle, uint16_t threshold_mv)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Check if in absolute VINDPM mode
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0D, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0D");
+        return ret;
+    }
+    
+    bool is_absolute_mode = (reg_val & BQ25896_REG0D_FORCE_VINDPM_MASK) != 0;
+    if (!is_absolute_mode) {
+        ESP_LOGW(TAG, "Setting absolute VINDPM when in relative mode - switching to absolute mode");
+        
+        // Switch to absolute mode
+        ret = bq25896_set_vindpm_mode(handle, BQ25896_VINDPM_ABSOLUTE);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+    }
+    
+    // Calculate register value by subtracting offset (2600mV) then dividing by step size (100mV)
+    uint8_t reg_val_vindpm = (threshold_mv - 2600) / 100;
+    
+    // Clamp value to valid range
+    if (threshold_mv < 3900) {
+        reg_val_vindpm = 13;  // 3.9V minimum (0001101)
+        ESP_LOGW(TAG, "VINDPM threshold clamped to minimum (3900mV)");
+    } else if (reg_val_vindpm > 0x7F) {
+        reg_val_vindpm = 0x7F;  // 15.3V maximum
+        ESP_LOGW(TAG, "VINDPM threshold clamped to maximum (15300mV)");
+    }
+    
+    // Update the register
+    ret = bq25896_update_bits(handle, BQ25896_REG0D, 
+                             BQ25896_REG0D_VINDPM_MASK,
+                             reg_val_vindpm << BQ25896_REG0D_VINDPM_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set absolute VINDPM threshold");
+        return ret;
+    }
+    
+    // Calculate actual threshold after clamping
+    uint16_t actual_threshold = 2600 + (reg_val_vindpm * 100);
+    
+    // Update internal config
+    handle->config.vindpm_absolute_mv = actual_threshold;
+    
+    ESP_LOGI(TAG, "Absolute VINDPM threshold set to %dmV", actual_threshold);
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 0Eh
+#################################################### */
+esp_err_t bq25896_get_thermal_regulation_status(bq25896_handle_t handle, bq25896_therm_stat_t *therm_stat)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(therm_stat != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid therm_stat pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0E, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0E");
+        return ret;
+    }
+    
+    *therm_stat = (reg_val & BQ25896_REG0E_THERM_STAT_MASK) >> BQ25896_REG0E_THERM_STAT_SHIFT;
+    
+    ESP_LOGD(TAG, "Thermal Regulation Status: %s", 
+             *therm_stat == BQ25896_THERM_STAT_NORMAL ? "Normal" : "In Thermal Regulation");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_battery_voltage(bq25896_handle_t handle, uint16_t *voltage_mv)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(voltage_mv != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid voltage_mv pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0E, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0E");
+        return ret;
+    }
+    
+    // Extract battery voltage value
+    uint8_t batv = (reg_val & BQ25896_REG0E_BATV_MASK) >> BQ25896_REG0E_BATV_SHIFT;
+    
+    // Calculate actual voltage: offset (2304mV) + batv * step (20mV)
+    *voltage_mv = 2304 + (batv * 20);
+    
+    ESP_LOGD(TAG, "Battery Voltage: %dmV", *voltage_mv);
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 0Fh
+#################################################### */
+esp_err_t bq25896_get_system_voltage(bq25896_handle_t handle, uint16_t *voltage_mv)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(voltage_mv != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid voltage_mv pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG0F, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG0F");
+        return ret;
+    }
+    
+    // Extract system voltage value
+    uint8_t sysv = (reg_val & BQ25896_REG0F_SYSV_MASK) >> BQ25896_REG0F_SYSV_SHIFT;
+    
+    // Calculate actual voltage: offset (2304mV) + sysv * step (20mV)
+    *voltage_mv = 2304 + (sysv * 20);
+    
+    ESP_LOGD(TAG, "System Voltage: %dmV", *voltage_mv);
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 10h
+#################################################### */
+esp_err_t bq25896_get_ts_voltage_percentage(bq25896_handle_t handle, float *ts_percentage)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(ts_percentage != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid ts_percentage pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG10, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG10");
+        return ret;
+    }
+    
+    // Extract TS voltage percentage value
+    uint8_t tspct = (reg_val & BQ25896_REG10_TSPCT_MASK) >> BQ25896_REG10_TSPCT_SHIFT;
+    
+    // Calculate the actual percentage using the offset and step values
+    // Per the datasheet, the values progress as 21%, 21.465%, 21.93%, 22.86%, 24.72%, 28.44%, 35.88%, 50.76%, etc.
+    float percentage = 0.0f;
+    
+    // The formula is not a simple linear scaling, but follows a pattern of doubling steps
+    if (tspct == 0) {
+        percentage = 21.0f; // Base offset
+    } else {
+        // Calculate using the stepping pattern shown in the table
+        // Step size doubles with each bit position
+        float step = 0.465f; // The smallest step
+        float value = 21.0f; // Start with offset
+        
+        for (int i = 0; i < 7; i++) {
+            if (tspct & (1 << i)) {
+                value += step;
+            }
+            step *= 2.0f; // Double the step for the next bit position
+        }
+        
+        percentage = value;
+    }
+    
+    // Clamp to valid range
+    if (percentage > 80.0f) {
+        percentage = 80.0f;
+    }
+    
+    *ts_percentage = percentage;
+    
+    ESP_LOGD(TAG, "TS Voltage: %.3f%% of REGN", percentage);
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 11h
+#################################################### */
+esp_err_t bq25896_get_vbus_good_status(bq25896_handle_t handle, bq25896_vbus_gd_t *vbus_gd)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(vbus_gd != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid vbus_gd pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG11, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG11");
+        return ret;
+    }
+    
+    *vbus_gd = (reg_val & BQ25896_REG11_VBUS_GD_MASK) >> BQ25896_REG11_VBUS_GD_SHIFT;
+    
+    ESP_LOGD(TAG, "VBUS Good Status: %s", 
+             *vbus_gd == BQ25896_VBUS_ATTACHED ? "Attached" : "Not Attached");
+    return ESP_OK;
+}
+    
+esp_err_t bq25896_get_vbus_voltage(bq25896_handle_t handle, uint16_t *voltage_mv)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(voltage_mv != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid voltage_mv pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG11, &reg_val);
+        if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG11");
+            return ret;
+    }
+    
+    // Extract VBUS voltage value
+    uint8_t vbusv = (reg_val & BQ25896_REG11_VBUSV_MASK) >> BQ25896_REG11_VBUSV_SHIFT;
+    
+    // Calculate actual voltage: offset (2600mV) + vbusv * step (100mV)
+    *voltage_mv = 2600 + (vbusv * 100);
+    
+    ESP_LOGD(TAG, "VBUS Voltage: %dmV", *voltage_mv);
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 12h
+#################################################### */
+esp_err_t bq25896_get_charge_current(bq25896_handle_t handle, uint16_t *current_ma)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(current_ma != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid current_ma pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG12, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG12");
+        return ret;
+    }
+    
+    // Extract charge current value
+    uint8_t ichgr = (reg_val & BQ25896_REG12_ICHGR_MASK) >> BQ25896_REG12_ICHGR_SHIFT;
+    
+    // Calculate actual current: ichgr * step (50mA)
+    *current_ma = ichgr * 50;
+    
+    ESP_LOGD(TAG, "Charge Current: %dmA", *current_ma);
+    
+    // If current is 0, add a note about possible VBAT < VBATSHORT condition
+    if (*current_ma == 0) {
+        ESP_LOGD(TAG, "Note: Zero current may indicate VBAT < VBATSHORT");
+    }
+    
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 13h
+#################################################### */
+esp_err_t bq25896_get_vdpm_status(bq25896_handle_t handle, bq25896_vdpm_stat_t *vdpm_stat)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(vdpm_stat != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid vdpm_stat pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG13, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG13");
+        return ret;
+    }
+    
+    *vdpm_stat = (reg_val & BQ25896_REG13_VDPM_STAT_MASK) >> BQ25896_REG13_VDPM_STAT_SHIFT;
+    
+    ESP_LOGD(TAG, "VINDPM Status: %s", 
+             *vdpm_stat == BQ25896_VDPM_ACTIVE ? "Active" : "Not Active");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_idpm_status(bq25896_handle_t handle, bq25896_idpm_stat_t *idpm_stat)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(idpm_stat != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid idpm_stat pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG13, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG13");
+        return ret;
+    }
+    
+    *idpm_stat = (reg_val & BQ25896_REG13_IDPM_STAT_MASK) >> BQ25896_REG13_IDPM_STAT_SHIFT;
+    
+    ESP_LOGD(TAG, "IINDPM Status: %s", 
+             *idpm_stat == BQ25896_IDPM_ACTIVE ? "Active" : "Not Active");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_ico_current_limit(bq25896_handle_t handle, uint16_t *current_ma)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(current_ma != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid current_ma pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG13, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG13");
+        return ret;
+    }
+    
+    // Extract input current limit value
+    uint8_t idpm_lim = reg_val & BQ25896_REG13_IDPM_LIM_MASK;
+    
+    // Calculate actual current: offset (100mA) + idpm_lim * step (50mA)
+    if (idpm_lim == 0) {
+        *current_ma = 100; // Default/minimum value
+    } else {
+        *current_ma = 100 + ((idpm_lim - 1) * 50);
+    }
+    
+    ESP_LOGD(TAG, "ICO Current Limit: %dmA", *current_ma);
+    return ESP_OK;
+}
+
+
+/* ####################################################
+*                  REGISTER 14h
+#################################################### */
+esp_err_t bq25896_reset_registers(bq25896_handle_t handle)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    
+    // Set the REG_RST bit to trigger register reset
+    esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG14, 
+                                       BQ25896_REG14_REG_RST_MASK,
+                                       1 << BQ25896_REG14_REG_RST_SHIFT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to reset registers");
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "Registers reset to default values");
+    
+    // Add a small delay to ensure reset completes
+    vTaskDelay(pdMS_TO_TICKS(10));
+    
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_ico_status(bq25896_handle_t handle, bq25896_ico_status_t *ico_status)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(ico_status != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid ico_status pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG14, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG14");
+        return ret;
+    }
+    
+    *ico_status = (reg_val & BQ25896_REG14_ICO_OPTIMIZED_MASK) >> BQ25896_REG14_ICO_OPTIMIZED_SHIFT;
+    
+    ESP_LOGD(TAG, "ICO Status: %s", 
+             *ico_status == BQ25896_ICO_COMPLETE ? 
+             "Complete (Maximum Current Detected)" : "In Progress");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_part_number(bq25896_handle_t handle, uint8_t *part_number)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(part_number != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid part_number pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG14, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG14");
+        return ret;
+    }
+    
+    *part_number = (reg_val & BQ25896_REG14_PN_MASK) >> BQ25896_REG14_PN_SHIFT;
+    
+    if (*part_number == 0) {
+        ESP_LOGD(TAG, "Device Part Number: bq25896");
+    } else {
+        ESP_LOGW(TAG, "Unexpected part number: %d, expected 0 for bq25896", *part_number);
+    }
+    
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_ts_profile(bq25896_handle_t handle, uint8_t *ts_profile)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(ts_profile != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid ts_profile pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG14, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG14");
+        return ret;
+    }
+    
+    *ts_profile = (reg_val & BQ25896_REG14_TS_PROFILE_MASK) >> BQ25896_REG14_TS_PROFILE_SHIFT;
+    
+    ESP_LOGD(TAG, "Temperature Profile: %s", 
+             *ts_profile == 1 ? "JEITA (default)" : "Unknown");
+    return ESP_OK;
+}
+
+esp_err_t bq25896_get_device_revision(bq25896_handle_t handle, bq25896_dev_rev_t *dev_rev)
+{
+    ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+    ESP_RETURN_ON_FALSE(dev_rev != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid dev_rev pointer");
+    
+    uint8_t reg_val;
+    esp_err_t ret = bq25896_read_reg(handle, BQ25896_REG14, &reg_val);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read REG14");
+        return ret;
+    }
+    
+    *dev_rev = (reg_val & BQ25896_REG14_DEV_REV_MASK) >> BQ25896_REG14_DEV_REV_SHIFT;
+    
+    ESP_LOGD(TAG, "Device Revision: %d", *dev_rev);
+    
+    // Check if device revision matches expected value (10 = 2)
+    if (*dev_rev != BQ25896_DEV_REV_2) {
+        ESP_LOGW(TAG, "Unexpected device revision: %d, expected 2", *dev_rev);
+    }
+    
+    return ESP_OK;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+// TBD -- ADD BBITS NAMES
+
+
+// /**
+//  * @brief Get charging power
+//  * Calculates the charging power based on current and voltage readings
+//  * 
+//  * @param handle Device handle
+//  * @param power_mw Pointer to store charging power in mW
+//  * @return esp_err_t ESP_OK on success, error otherwise
+//  */
+// esp_err_t bq25896_get_charging_power(bq25896_handle_t handle, uint32_t *power_mw)
+// {
+//     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+//     ESP_RETURN_ON_FALSE(power_mw != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid power_mw pointer");
+    
+//     uint16_t current_ma, battery_mv;
+    
+//     // Read charge current
+//     esp_err_t ret = bq25896_get_charge_current(handle, &current_ma);
+//     if (ret != ESP_OK) {
+//         return ret;
+//     }
+    
+//     // Read battery voltage
+//     ret = bq25896_get_battery_voltage(handle, &battery_mv);
+//     if (ret != ESP_OK) {
+//         return ret;
+//     }
+    
+//     // Calculate power (P = V * I)
+//     // Convert mV * mA to mW (need to divide by 1000)
+//     *power_mw = ((uint32_t)battery_mv * (uint32_t)current_ma) / 1000;
+    
+//     ESP_LOGD(TAG, "Charging Power: %dmW (%dmV × %dmA)", *power_mw, battery_mv, current_ma);
+//     return ESP_OK;
+// }
+
+
+
+
+
+
+
+
+// /**
+//  * @brief Check if device is charging
+//  * 
+//  * @param handle Device handle
+//  * @param is_charging Pointer to store charging state (true if charging, false otherwise)
+//  * @return esp_err_t ESP_OK on success, error otherwise
+//  */
+// esp_err_t bq25896_is_charging(bq25896_handle_t handle, bool *is_charging)
+// {
+//     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+//     ESP_RETURN_ON_FALSE(is_charging != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid is_charging pointer");
+    
+//     bq25896_chrg_stat_t chrg_stat;
+//     esp_err_t ret = bq25896_get_charging_status(handle, &chrg_stat);
+//     if (ret != ESP_OK) {
+//         return ret;
+//     }
+    
+//     // Device is charging if in pre-charge or fast charging state
+//     *is_charging = (chrg_stat == BQ25896_CHRG_STAT_PRE_CHARGE || 
+//                    chrg_stat == BQ25896_CHRG_STAT_FAST_CHARGING);
+    
+//     return ESP_OK;
+// }
+
+// /**
+//  * @brief Check if charging is complete
+//  * 
+//  * @param handle Device handle
+//  * @param is_complete Pointer to store completion state (true if complete, false otherwise)
+//  * @return esp_err_t ESP_OK on success, error otherwise
+//  */
+// esp_err_t bq25896_is_charge_done(bq25896_handle_t handle, bool *is_complete)
+// {
+//     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
+//     ESP_RETURN_ON_FALSE(is_complete != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid is_complete pointer");
+    
+//     bq25896_chrg_stat_t chrg_stat;
+//     esp_err_t ret = bq25896_get_charging_status(handle, &chrg_stat);
+//     if (ret != ESP_OK) {
+//         return ret;
+//     }
+    
+//     // Charging is complete if in termination done state
+//     *is_complete = (chrg_stat == BQ25896_CHRG_STAT_TERM_DONE);
+    
+//     return ESP_OK;
+// }

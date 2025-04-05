@@ -6,581 +6,316 @@ ESP-IDF component for the BQ25896 battery charger IC.
 
 The BQ25896 is a high-efficiency single-cell Li-Ion/Li-Polymer battery charger and system power path management IC from Texas Instruments. This ESP-IDF component provides a complete API for configuring and controlling the BQ25896 via I2C.
 
-## Key Features
+## Register Reference
 
-- **Advanced Charging Control**
-  - Configurable fast charge current up to 3008mA
-  - Precharge and termination current control
-  - Dynamic input current optimization
-  - Temperature-based charging profiles
-  - Safety timer and watchdog protection
-
-- **Input Power Management**
-  - High impedance mode support
-  - ILIM pin and I2C current limit control
-  - Input voltage dynamic power management
-  - USB and adapter input detection
-  - Input current optimizer (ICO)
-
-- **Safety Features**
-  - Thermal regulation and protection
-  - Battery voltage protection
-  - Input voltage protection
-  - Watchdog timer
-  - Safety timers with extension support
-  - NTC temperature monitoring
-
-- **System Power Path Management**
-  - Configurable system voltage regulation
-  - Battery to system power path control
-  - Minimum system voltage protection
-  - Dynamic power source switching
-  - VINDPM threshold control
-
-- **Boost (OTG) Mode Operation**
-  - Configurable output voltage
-  - Current limit protection
-  - Frequency selection (500kHz/1.5MHz)
-  - Temperature monitoring
-  - Battery voltage protection
-
-- **Monitoring and Status**
-  - ADC for voltage and current monitoring
-  - Thermal regulation status
-  - Charging status indication
-  - Fault detection and reporting
-  - Input source detection
-  - Power good indication
-
-- **Advanced Features**
-  - Current pulse control (PUMPX)
-  - IR compensation
-  - JEITA temperature profile support
-  - Boost mode frequency selection
-  - Automatic and manual input detection
-  - Shipping mode support
-
-## Register Functionality
+The BQ25896 contains the following registers:
 
 ### REG00 - Input Source Control
-
-The REG00 register controls how power is taken from the input source (USB, adapter, etc.).
-
-#### Bit 7 (EN_HIZ) - High Impedance Mode
-
-- **Function**: When enabled, disconnects the input power source by placing the input in a high-impedance state.
-- **Use Cases**:
-  - Battery-only operation (to force system to run from battery)
-  - Input current isolation during testing
-  - Power source switching (cleanly disconnect one source before connecting another)
-- **Behavior**:
-  - When set to 1: Input current is reduced to zero; charging stops
-  - When set to 0 (default): Normal input current flow allowed
-
-#### Bit 6 (EN_ILIM) - ILIM Pin Control
-
-- **Function**: Enables or disables the external ILIM pin for hardware-based current limiting.
-- **Use Cases**:
-  - Hardware current limiting through a resistor connected to the ILIM pin
-  - Dynamic current limiting through external circuitry
-- **Behavior**:
-  - When set to 1 (default): Current limit is determined by ILIM pin resistance
-  - When set to 0: Current limit is determined solely by register settings (IINLIM)
-  - The actual input current limit is the lower of the two values
-
-#### Bits 5-0 (IINLIM) - Input Current Limit
-
-- **Function**: Sets the maximum current that can be drawn from the input source.
-- **Use Cases**:
-  - Limiting current drawn from USB ports (100mA/500mA/900mA per USB spec)
-  - Preventing overload of weak power adapters
-  - Optimizing power draw based on the cable and source capabilities
-- **Behavior**:
-  - Range: 100mA (000000) to 3.25A (111111) in 50mA steps
-  - Default: 500mA (001000) - Suitable for standard USB
-  - After USB detection, values may be automatically updated:
-    - USB SDP (Standard Downstream Port): Limited to 500mA
-    - USB DCP (Dedicated Charging Port): Can go up to 3.25A
+- **EN_HIZ** (Bit 7): Enable HIZ Mode `R/W`
+  - 0: Disable (Default)
+  - 1: Enable
+- **EN_ILIM** (Bit 6): Enable ILIM Pin `R/W`
+  - 0: Disable
+  - 1: Enable (Default)
+- **IINLIM** (Bits 5-0): Input Current Limit `R/W`
+  - Range: 100mA (000000) – 3.25A (111111)
+  - Step size: 50mA
+  - Default: 500mA (001000)
 
 ### REG01 - Power-On Configuration
-
-The REG01 register configures temperature protection during boost (OTG) mode and the dynamic input voltage management system.
-
-#### Bits 7-6 (BHOT) - Boost Mode Hot Temperature Threshold
-
-- **Function**: Sets the temperature threshold for thermal protection during boost (OTG) mode.
-- **Use Cases**:
-  - Protecting the system when supplying power to external devices
-  - Customizing thermal thresholds based on enclosure thermal characteristics
-- **Behavior**:
-  - 00 (default): Vbhot1 Threshold (34.75% of REGN) ≈ 60°C
-  - 01: Vbhot0 Threshold (37.75% of REGN) ≈ 55°C
-  - 10: Vbhot2 Threshold (31.25% of REGN) ≈ 65°C
-  - 11: Thermal protection disabled (use with caution)
-  - When temperature exceeds threshold, boost operation is suspended
-
-#### Bit 5 (BCOLD) - Boost Mode Cold Temperature Threshold
-
-- **Function**: Sets the cold temperature threshold for boost mode operation.
-- **Use Cases**:
-  - Preventing boost mode operation in extremely cold conditions
-  - Battery protection in low-temperature environments
-- **Behavior**:
-  - 0 (default): Vbcold0 Threshold (77% of REGN) ≈ 0°C
-  - 1: Vbcold1 Threshold (80% of REGN) ≈ -10°C
-  - When temperature is below threshold, boost operation is suspended
-
-#### Bits 4-0 (VINDPM_OS) - Input Voltage Limit Offset
-
-- **Function**: Configures the dynamic power management threshold for input voltage.
-- **Use Cases**:
-  - Preventing brownouts when using weak power sources
-  - Optimizing power draw from sources with high impedance
-  - Ensuring stable operation with long or thin cables
-- **Behavior**:
-  - Range: 0mV (00000) to 3100mV (11111) in 100mV steps
+- **BHOT** (Bits 7-6): Boost Mode Hot Temperature Monitor Threshold `R/W`
+  - 00: Vbhot1 Threshold (34.75%) (Default)
+  - 01: Vbhot0 Threshold (37.75%)
+  - 10: Vbhot2 Threshold (31.25%)
+  - 11: Disable boost mode thermal protection
+- **BCOLD** (Bit 5): Boost Mode Cold Temperature Monitor Threshold `R/W`
+  - 0: Vbcol0 Threshold (77%) (Default)
+  - 1: Vbcol1 Threshold (80%)
+- **VINDPM_OS** (Bits 4-0): Input Voltage Limit Offset `R/W`
+  - Range: 0mV (00000) to 3100mV (11111)
+  - Step size: 100mV
   - Default: 600mV (00110)
-  - The threshold is calculated as: VBUS - VINDPM_OS (for VBUS ≤ 6V)
-  - For higher voltage inputs (VBUS > 6V), the offset is doubled
-  - When VBUS drops below the calculated threshold, input current is reduced
-  - This creates a dynamic response to input voltage droops
 
 ### REG02 - Charge Current Control
-
-The REG02 register controls ADC conversion, boost mode frequency, and input source detection features.
-
-#### Bit 7 (CONV_START) - ADC Conversion Control
-
-- **Function**: Controls the start/stop of ADC conversion
-- **Use Cases**:
-  - Manual triggering of ADC measurements
-  - Reading battery voltage, system voltage, and other analog values
-- **Behavior**:
-  - When set to 1: Starts ADC conversion
-  - When set to 0: ADC conversion not active (default)
-  - Read-only when CONV_RATE = 1 (continuous conversion mode)
-  - Bit stays high during ADC conversion and input source detection
-
-#### Bit 6 (CONV_RATE) - ADC Conversion Rate
-
-- **Function**: Selects between one-shot or continuous ADC conversion
-- **Use Cases**:
-  - Continuous monitoring of system parameters
-  - Power-efficient single measurements
-- **Behavior**:
-  - When set to 0: One-shot ADC conversion (default)
-  - When set to 1: Continuous conversion with 1-second interval
-
-#### Bit 5 (BOOST_FREQ) - Boost Mode Frequency
-
-- **Function**: Selects the switching frequency for boost (OTG) mode
-- **Use Cases**:
-  - Optimizing efficiency vs. noise in boost mode
-  - Reducing EMI in sensitive applications
-- **Behavior**:
-  - When set to 0: 1.5MHz operation (default)
-  - When set to 1: 500kHz operation
-  - Note: Write is ignored when OTG_CONFIG is enabled
-
-#### Bit 4 (ICO_EN) - Input Current Optimizer
-
-- **Function**: Enables/disables the Input Current Optimizer algorithm
-- **Use Cases**:
-  - Maximizing input current from power-limited sources
-  - Optimizing charging efficiency
-- **Behavior**:
-  - When set to 1: ICO algorithm enabled (default)
-  - When set to 0: ICO algorithm disabled
-  - Automatically adjusts input current based on source capability
-
-#### Bit 1 (FORCE_DPDM) - Force Input Detection
-
-- **Function**: Forces Power Source Detection
-- **Use Cases**:
-  - Manual triggering of input source detection
-  - Troubleshooting power source identification
-- **Behavior**:
-  - When set to 1: Forces PSEL detection
-  - When set to 0: Not in PSEL detection (default)
-  - Self-clears after detection is complete
-
-#### Bit 0 (AUTO_DPDM) - Automatic Input Detection
-
-- **Function**: Controls automatic power source detection when VBUS is connected
-- **Use Cases**:
-  - Automatic USB/adapter type detection
-  - Plug-and-play charging configuration
-- **Behavior**:
-  - When set to 1: Enables automatic PSEL detection on VBUS connection (default)
-  - When set to 0: Disables automatic detection
-  - Helps configure appropriate charging parameters based on source type
-
-All these functions are implemented with type-safe enumerations for better code reliability:
-- `bq25896_adc_conv_state_t`: Controls ADC conversion start/stop
-- `bq25896_adc_conv_rate_t`: Selects one-shot or continuous conversion
-- `bq25896_boost_freq_t`: Sets boost mode frequency
-- `bq25896_ico_state_t`: Controls Input Current Optimizer
-- `bq25896_force_dpdm_state_t`: Controls manual input detection
-- `bq25896_auto_dpdm_state_t`: Controls automatic input detection
-
-Each function includes validation of input parameters, error handling, and logging for debugging purposes.
+- **CONV_START** (Bit 7): ADC Conversion Start Control `R/W`
+  - 0: ADC conversion not active (Default)
+  - 1: Start ADC conversion
+  - Note: Read-only when CONV_RATE = 1
+- **CONV_RATE** (Bit 6): ADC Conversion Rate Selection `R/W`
+  - 0: One shot ADC conversion (Default)
+  - 1: Start 1s Continuous Conversion
+- **BOOST_FREQ** (Bit 5): Boost Mode Frequency Selection `R/W`
+  - 0: 1.5MHz (Default)
+  - 1: 500kHz
+  - Note: Write ignored when OTG_CONFIG is enabled
+- **ICO_EN** (Bit 4): Input Current Optimizer Enable `R/W`
+  - 0: Disable ICO Algorithm
+  - 1: Enable ICO Algorithm (Default)
+- **FORCE_DPDM** (Bit 1): Force Input Detection `R/W`
+  - 0: Not in PSEL detection (Default)
+  - 1: Force PSEL detection
+- **AUTO_DPDM_EN** (Bit 0): Automatic Input Detection Enable `R/W`
+  - 0: Disable PSEL detection when VBUS is plugged-in
+  - 1: Enable PSEL detection when VBUS is plugged-in (Default)
 
 ### REG03 - Charge Control
-
-The REG03 register controls battery load, watchdog timer, charging modes, and system voltage thresholds.
-
-#### Bit 7 (BAT_LOADEN) - Battery Load Enable
-
-- **Function**: Controls the battery load (IBATLOAD) feature
-- **Use Cases**:
-  - Battery capacity testing
-  - Discharge testing
-  - Battery health assessment
-- **Behavior**:
-  - When set to 1: Enables battery load
-  - When set to 0: Disables battery load (default)
-  - Allows controlled discharge testing of the battery
-
-#### Bit 6 (WD_RST) - Watchdog Timer Reset
-
-- **Function**: Controls the I2C watchdog timer reset
-- **Use Cases**:
-  - Preventing system lockup
-  - Maintaining charging safety
-  - Ensuring communication integrity
-- **Behavior**:
-  - When set to 1: Resets the watchdog timer
-  - When set to 0: Normal operation (default)
-  - Auto-clears after timer reset
-  - Must be periodically reset to prevent charging timeout
-
-#### Bit 5 (OTG_CONFIG) - Boost Mode Configuration
-
-- **Function**: Controls the OTG (boost) mode operation
-- **Use Cases**:
-  - USB OTG power supply
-  - External device powering
-  - Reverse charging applications
-- **Behavior**:
-  - When set to 1: Enables OTG mode
-  - When set to 0: Disables OTG mode (default)
-  - Converts battery voltage to regulated output voltage
-
-#### Bit 4 (CHG_CONFIG) - Charge Enable Configuration
-
-- **Function**: Controls the battery charging function
-- **Use Cases**:
-  - Battery charging control
-  - System power management
-  - Maintenance charging
-- **Behavior**:
-  - When set to 1: Enables charging (default)
-  - When set to 0: Disables charging
-  - Controls the main charging function of the device
-
-#### Bits 3-1 (SYS_MIN) - Minimum System Voltage
-
-- **Function**: Sets the minimum voltage that the system will regulate to
-- **Use Cases**:
-  - System brownout prevention
-  - Battery over-discharge protection
-  - Power path management
-- **Behavior**:
+- **BAT_LOADEN** (Bit 7): Battery Load Enable `R/W`
+  - 0: Disable (Default)
+  - 1: Enable
+- **WD_RST** (Bit 6): I2C Watchdog Timer Reset `R/W`
+  - 0: Normal (Default)
+  - 1: Reset (Back to 0 after timer reset)
+- **OTG_CONFIG** (Bit 5): Boost (OTG) Mode Configuration `R/W`
+  - 0: OTG Disable (Default)
+  - 1: OTG Enable
+- **CHG_CONFIG** (Bit 4): Charge Enable Configuration `R/W`
+  - 0: Charge Disable
+  - 1: Charge Enable (Default)
+- **SYS_MIN** (Bits 3-1): Minimum System Voltage Limit `R/W`
   - Range: 3.0V (000) to 3.7V (111)
-  - Step size: 100mV
+  - Step size: 0.1V
   - Default: 3.5V (101)
-  - Values:
-    - 000: 3.0V
-    - 001: 3.1V
-    - 010: 3.2V
-    - 011: 3.3V
-    - 100: 3.4V
-    - 101: 3.5V (default)
-    - 110: 3.6V
-    - 111: 3.7V
-
-#### Bit 0 (MIN_VBAT_SEL) - Minimum Battery Voltage Selection
-
-- **Function**: Sets the minimum battery voltage threshold for exiting boost mode
-- **Use Cases**:
-  - Battery protection during OTG operation
-  - System stability management
-  - Deep discharge prevention
-- **Behavior**:
-  - When set to 0: 2.9V threshold (default)
-  - When set to 1: 2.5V threshold
-  - Determines when boost mode operation stops to protect battery
-
-All these functions are implemented with type-safe enumerations for better code reliability:
-- `bq25896_bat_load_state_t`: Controls battery load feature
-- `bq25896_wd_rst_state_t`: Controls watchdog timer reset
-- `bq25896_otg_state_t`: Controls OTG (boost) mode
-- `bq25896_chg_state_t`: Controls charging function
-- `bq25896_sys_min_t`: Sets minimum system voltage
-- `bq25896_min_vbat_sel_t`: Sets minimum battery voltage threshold
-
-Each function includes input validation, error handling, and logging for debugging purposes, maintaining consistency with the existing register control implementations.
+- **MIN_VBAT_SEL** (Bit 0): Minimum Battery Voltage to exit boost mode `R/W`
+  - 0: 2.9V (Default)
+  - 1: 2.5V
 
 ### REG04 - Fast Charge Current Control
-
-The REG04 register controls the fast charge current and current pulse control features.
-
-#### Bit 7 (EN_PUMPX) - Current Pulse Control Enable
-
-- **Function**: Controls the current pulse control feature
-- **Use Cases**:
-  - Dynamic voltage adjustment
-  - Efficiency optimization
-  - Advanced charging control
-- **Behavior**:
-  - When set to 1: Enables current pulse control
-  - When set to 0: Disables current pulse control (default)
-  - Controls PUMPX_UP and PUMPX_DN functionality in REG09
-
-#### Bits 6-0 (ICHG) - Fast Charge Current Limit
-
-- **Function**: Sets the battery charging current during fast charge phase
-- **Use Cases**:
-  - Battery capacity matching
-  - Thermal management
-  - Charging speed control
-  - Battery longevity optimization
-- **Behavior**:
-  - Range: 0mA to 3008mA
+- **EN_PUMPX** (Bit 7): Current pulse control Enable `R/W`
+  - 0: Disable (Default)
+  - 1: Enable
+- **ICHG** (Bits 6-0): Fast Charge Current Limit `R/W`
+  - Range: 0mA (0000000) to 3008mA (0101111)
   - Step size: 64mA
-  - Default: 2048mA (0x20)
-  - Setting to 0mA (0x00) disables charging
-  - Values above 3008mA are clamped to 3008mA
-  - Actual current may be lower due to thermal or input current limitations
+  - Default: 2048mA (0100000)
 
-## Key Terminology
+### REG05 - Pre-Charge/Termination Current Control
+- **IPRECHG** (Bits 7-4): Precharge Current Limit `R/W`
+  - Range: 64mA (0000) to 1024mA (1111)
+  - Step size: 64mA
+  - Default: 128mA (0001)
+- **ITERM** (Bits 3-0): Termination Current Limit `R/W`
+  - Range: 64mA (0000) to 1024mA (1111)
+  - Step size: 64mA
+  - Default: 256mA (0011)
 
-### REGN (Internal Regulated Voltage)
+### REG06 - Charge Voltage Control
+- **VREG** (Bits 7-2): Charge Voltage Limit `R/W`
+  - Offset: 3.840V
+  - Range: 3.840V (000000) - 4.608V (110000)
+  - Step size: 16mV
+  - Default: 4.208V (010111)
+- **BATLOWV** (Bit 1): Battery Precharge to Fast Charge Threshold `R/W`
+  - 0: 2.8V
+  - 1: 3.0V (default)
+- **VRECHG** (Bit 0): Battery Recharge Threshold Offset `R/W`
+  - 0: 100mV below VREG (default)
+  - 1: 200mV below VREG
 
-REGN is an internal regulated voltage rail within the BQ25896 that:
+### REG07 - Charge Termination/Timer Control
+- **EN_TERM** (Bit 7): Charging Termination Enable `R/W`
+  - 0: Disable
+  - 1: Enable (Default)
+- **STAT_DIS** (Bit 6): STAT Pin Disable `R/W`
+  - 0: Enable STAT pin function (Default)
+  - 1: Disable
+- **WATCHDOG** (Bits 5-4): I2C Watchdog Timer Setting `R/W`
+  - 00: Disable watchdog timer
+  - 01: 40s (Default)
+  - 10: 80s
+  - 11: 160s
+- **EN_TIMER** (Bit 3): Charging Safety Timer Enable `R/W`
+  - 0: Disable
+  - 1: Enable (Default)
+- **CHG_TIMER** (Bits 2-1): Fast Charge Timer Setting `R/W`
+  - 00: 5 hrs
+  - 01: 8 hrs
+  - 10: 12 hrs (Default)
+  - 11: 20 hrs
+- **JEITA_ISET** (Bit 0): JEITA Low Temperature Current Setting `R/W`
+  - 0: 50% of ICHG
+  - 1: 20% of ICHG (Default)
 
-- Provides a stable voltage (typically 4.5V) for the chip's internal circuits
-- Serves as a reference voltage for the thermal thresholds
-- Powers the internal gate drivers and control logic
-- Is used as the reference for temperature threshold percentages
+### REG08 - IR Compensation/Thermal Regulation Control
+- **BAT_COMP** (Bits 7-5): IR Compensation Resistor Setting `R/W`
+  - Range: 0 - 140mΩ
+  - Default: 0Ω (000)
+- **VCLAMP** (Bits 4-2): IR Compensation Voltage Clamp `R/W`
+  - Range: 0 - 224mV
+  - Default: 0mV (000)
+- **TREG** (Bits 1-0): Thermal Regulation Threshold `R/W`
+  - 00: 60°C
+  - 01: 80°C
+  - 10: 100°C
+  - 11: 120°C (default)
 
-When the datasheet mentions thresholds as percentages of REGN (e.g., "34.75% of REGN"), it means the voltage at the TS pin is compared to this fraction of the internal regulated voltage to determine if a temperature threshold has been exceeded.
+### REG09 - Misc Operation Control
+- **FORCE_ICO** (Bit 7): Force Start Input Current Optimizer `R/W`
+  - 0: Do not force ICO (Default)
+  - 1: Force ICO
+  - Note: Returns to 0 after ICO starts
+- **TMR2X_EN** (Bit 6): Safety Timer Setting during DPM/Thermal Regulation `R/W`
+  - 0: Safety timer not slowed by 2X
+  - 1: Safety timer slowed by 2X (Default)
+- **BATFET_DIS** (Bit 5): Force BATFET off `R/W`
+  - 0: Allow BATFET turn on (Default)
+  - 1: Force BATFET off
+- **JEITA_VSET** (Bit 4): JEITA High Temperature Voltage Setting `R/W`
+  - 0: VREG-200mV (Default)
+  - 1: VREG
+- **BATFET_DLY** (Bit 3): BATFET turn off delay control `R/W`
+  - 0: Turn off immediately (Default)
+  - 1: Turn off with delay
+- **BATFET_RST_EN** (Bit 2): BATFET full system reset enable `R/W`
+  - 0: Disable
+  - 1: Enable (Default)
+- **PUMPX_UP** (Bit 1): Current pulse control voltage up enable `R/W`
+  - 0: Disable (Default)
+  - 1: Enable
+  - Note: Returns to 0 after pulse control sequence completes
+- **PUMPX_DN** (Bit 0): Current pulse control voltage down enable `R/W`
+  - 0: Disable (Default)
+  - 1: Enable
+  - Note: Returns to 0 after pulse control sequence completes
 
-### Temperature Sensing and REGN
+### REG0A - Boost Mode Control
+- **BOOSTV** (Bits 7-4): Boost Mode Voltage Regulation `R/W`
+  - Offset: 4.55V
+  - Range: 4.55V - 5.51V
+  - Default: 4.988V (0111)
+- **PFM_OTG_DIS** (Bit 3): PFM mode allowed in boost mode `R/W`
+  - 0: Allow PFM (default)
+  - 1: Disable PFM
+- **BOOST_LIM** (Bits 2-0): Boost Mode Current Limit `R/W`
+  - 000: 0.5A
+  - 001: 0.75A
+  - 010: 1.2A
+  - 011: 1.4A (default)
+  - 100: 1.65A
+  - 101: 1.875A
+  - 110: 2.15A
+  - 111: Reserved
 
-The BQ25896 uses a resistor divider with an NTC (Negative Temperature Coefficient) thermistor to monitor temperature. As temperature increases, the NTC resistance decreases, causing the voltage at the TS pin to decrease as a percentage of REGN.
+### REG0B - Status Register
+- **VBUS_STAT** (Bits 7-5): VBUS Status register `R`
+  - 000: No Input
+  - 001: USB Host SDP
+  - 010: Adapter (3.25A)
+  - 111: OTG
+- **CHRG_STAT** (Bits 4-3): Charging Status `R`
+  - 00: Not Charging
+  - 01: Pre-charge (< VBATLOWV)
+  - 10: Fast Charging
+  - 11: Charge Termination Done
+- **PG_STAT** (Bit 2): Power Good Status `R`
+  - 0: Not Power Good
+  - 1: Power Good
+- **VSYS_STAT** (Bit 0): VSYS Regulation Status `R`
+  - 0: Not in VSYSMIN regulation (BAT > VSYSMIN)
+  - 1: In VSYSMIN regulation (BAT < VSYSMIN)
 
-The chip compares the TS pin voltage to specific percentage thresholds of REGN:
-- Hot thresholds (BHOT): Lower percentages (31-38% of REGN) indicate higher temperatures
-- Cold thresholds (BCOLD): Higher percentages (77-80% of REGN) indicate lower temperatures
+### REG0C - Fault Register
+- **WATCHDOG_FAULT** (Bit 7): Watchdog Fault Status `R`
+  - 0: Normal
+  - 1: Watchdog timer expiration
+- **BOOST_FAULT** (Bit 6): Boost Mode Fault Status `R`
+  - 0: Normal
+  - 1: VBUS overloaded in OTG, or VBUS OVP, or battery is too low in boost mode
+- **CHRG_FAULT** (Bits 5-4): Charge Fault Status `R`
+  - 00: Normal
+  - 01: Input fault (VBUS > VACOV or VBAT < VBUS < VVBUSMIN)
+  - 10: Thermal shutdown
+  - 11: Charge Safety Timer Expiration
+- **BAT_FAULT** (Bit 3): Battery Fault Status `R`
+  - 0: Normal
+  - 1: BATOVP (VBAT > VBATOVP)
+- **NTC_FAULT** (Bits 2-0): NTC Fault Status `R`
+  - Buck Mode:
+    - 000: Normal
+    - 010: TS Warm
+    - 011: TS Cool
+    - 101: TS Cold
+    - 110: TS Hot
+  - Boost Mode:
+    - 000: Normal
+    - 101: TS Cold
+    - 110: TS Hot
 
-For example, when the TS pin voltage falls below 34.75% of REGN (approximately equivalent to 60°C at the NTC), the hot temperature threshold is triggered. Similarly, when the TS pin voltage rises above 77% of REGN (approximately 0°C), the cold temperature threshold is triggered.
+### REG0D - VINDPM Register
+- **FORCE_VINDPM** (Bit 7): VINDPM Threshold Setting Method `R/W`
+  - 0: Relative VINDPM Threshold (default)
+  - 1: Absolute VINDPM Threshold
+- **VINDPM** (Bits 6-0): Absolute VINDPM Threshold `R/W`
+  - Offset: 2.6V
+  - Range: 3.9V (0001101) - 15.3V (1111111)
+  - Default: 4.4V (0010010)
+  - Note: Read-only when FORCE_VINDPM=0
 
-### ADC Conversion System
+### REG0E - Battery Voltage Register
+- **THERM_STAT** (Bit 7): Thermal Regulation Status `R`
+  - 0: Normal
+  - 1: In Thermal Regulation
+- **BATV** (Bits 6-0): Battery Voltage Reading `R`
+  - Offset: 2.304V
+  - Range: 2.304V - 4.848V
+  - Step size: 20mV
 
-The BQ25896's ADC (Analog-to-Digital Converter) system provides critical measurements for:
-- Battery voltage (VBAT)
-- System voltage (VSYS)
-- Input voltage (VBUS)
-- Charge current (ICHG)
-- Temperature sensor voltage (TS)
+### REG0F - System Voltage Register
+- **SYSV** (Bits 6-0): System Voltage Reading `R`
+  - Offset: 2.304V
+  - Range: 2.304V - 4.848V
+  - Step size: 20mV
 
-The ADC system can operate in two modes:
-- **One-shot Mode**: Single conversion triggered manually
-- **Continuous Mode**: Automatic conversions every second
+### REG10 - TS Voltage Register
+- **TSPCT** (Bits 6-0): TS Voltage as percentage of REGN `R`
+  - Offset: 21%
+  - Range: 21% - 80%
 
-When a conversion is in progress, the CONV_START bit remains high until completion. This allows software to monitor the conversion status.
+### REG11 - VBUS Voltage Register
+- **VBUS_GD** (Bit 7): VBUS Good Status `R`
+  - 0: Not VBUS attached
+  - 1: VBUS Attached
+- **VBUSV** (Bits 6-0): VBUS Voltage Reading `R`
+  - Offset: 2.6V
+  - Range: 2.6V - 15.3V
+  - Step size: 100mV
 
-### Input Source Detection (DPDM)
+### REG12 - Charge Current Register
+- **ICHGR** (Bits 6-0): Charge Current Reading `R`
+  - Range: 0mA - 6350mA
+  - Step size: 50mA
+  - Note: Returns 0 for VBAT < VBATSHORT
 
-The BQ25896 includes sophisticated input source detection through its DPDM system:
+### REG13 - VDPM/IDPM Status Register
+- **VDPM_STAT** (Bit 7): VINDPM Status `R`
+  - 0: Not in VINDPM
+  - 1: VINDPM
+- **IDPM_STAT** (Bit 6): IINDPM Status `R`
+  - 0: Not in IINDPM
+  - 1: IINDPM
+- **IDPM_LIM** (Bits 5-0): Input Current Limit while ICO enabled `R`
+  - Offset: 100mA
+  - Range: 100mA - 3.25A
+  - Step size: 50mA
 
-- **DPDM**: Data Plus (D+) and Data Minus (D-) lines detection
-- Automatically identifies USB port types:
-  - Standard Downstream Port (SDP)
-  - Charging Downstream Port (CDP)
-  - Dedicated Charging Port (DCP)
-  - Various proprietary charging schemes
+### REG14 - Device Information Register
+- **REG_RST** (Bit 7): Register Reset `R/W`
+  - 0: Keep current register setting (default)
+  - 1: Reset to default register value and reset safety timer
+  - Note: Reset to 0 after register reset is completed
+- **ICO_OPTIMIZED** (Bit 6): Input Current Optimizer Status `R`
+  - 0: Optimization is in progress
+  - 1: Maximum Input Current Detected
+- **PN** (Bits 5-3): Device Configuration `R`
+  - 000: bq25896
+- **TS_PROFILE** (Bit 2): Temperature Profile `R`
+  - 1: JEITA (default)
+- **DEV_REV** (Bits 1-0): Device Revision `R`
+  - 10: Device Revision
 
-The detection can be triggered in two ways:
-1. **Automatic** (AUTO_DPDM): Triggers when VBUS is connected
-2. **Manual** (FORCE_DPDM): Software-initiated detection
+## Function Reference
 
-### Input Current Optimization (ICO)
+[Add function documentation here]
 
-The Input Current Optimizer is an advanced feature that:
+## Examples
 
-- Dynamically maximizes input current based on source capability
-- Prevents source collapse by monitoring input voltage
-- Works in conjunction with VINDPM for optimal power draw
-
-ICO operation sequence:
-1. Gradually increases input current
-2. Monitors input voltage for signs of source stress
-3. Finds and maintains the optimal current level
-4. Periodically retries to find a higher current capability
-
-### Boost Mode Operation
-
-Boost mode (also called OTG mode) converts battery voltage to a regulated output voltage for powering external devices:
-
-- **Frequency Selection**:
-  - 1.5MHz: Higher efficiency, smaller components
-  - 500kHz: Lower EMI, better stability in some applications
-  
-- **Protection Features**:
-  - Over-current protection
-  - Short-circuit protection
-  - Temperature monitoring
-  - Input voltage monitoring
-
-The boost frequency selection (BOOST_FREQ) affects:
-- Switching losses
-- Component size requirements
-- EMI/noise characteristics
-- Overall efficiency
-
-## How VINDPM Works
-
-The VINDPM (Voltage Input Dynamic Power Management) system is a key feature that makes the BQ25896 suitable for a wide range of power sources:
-
-1. The chip measures the input voltage (VBUS)
-2. It subtracts the configured offset (VINDPM_OS)
-3. If the input voltage falls below this threshold, the chip:
-   - Gradually reduces the input current
-   - Maintains a stable input voltage at the threshold
-   - Prevents complete collapse of weak power sources
-
-Example scenarios:
-- **USB Port with Long Cable**: Setting VINDPM_OS to 600mV prevents voltage droop below 4.4V
-- **Weak Solar Panel**: VINDPM automatically reduces current draw as voltage drops, operating at the optimal power point
-- **12V Adapter**: With 600mV offset (doubled to 1.2V for VBUS > 6V), prevents input voltage from dropping below 10.8V
-
-## Usage
-
-For basic usage, see the examples directory. Here's a quick start:
-
-```c
-#include "kode_bq25896.h"
-
-// Initialize
-bq25896_handle_t handle;
-bq25896_init(i2c_bus, BQ25896_I2C_ADDR_DEFAULT, &handle);
-
-// Configure with default settings
-bq25896_config_t config;
-bq25896_get_default_config(&config);
-bq25896_configure(handle, &config);
-
-// Start charging
-bq25896_start_charging(handle);
-```
-
-## License
-
-Apache-2.0
-
-### Power Path Management
-
-The BQ25896's power path management system, controlled primarily through REG03, provides:
-
-- **System Voltage Control**:
-  - Maintains stable system voltage above minimum threshold (SYS_MIN)
-  - Prevents system brownout during load transients
-  - Manages power distribution between input source and battery
-  - Supports 3.0V to 3.7V system operation range
-
-- **Operating Modes**:
-  1. Normal Charging Mode:
-     - System powered from input source
-     - Battery charging enabled
-     - System voltage regulated above SYS_MIN
-  2. Battery-Only Mode:
-     - System powered from battery
-     - No input source or HIZ mode enabled
-     - Battery discharge controlled
-  3. Boost (OTG) Mode:
-     - Battery powers external devices
-     - Regulated output voltage
-     - Protected by MIN_VBAT threshold
-
-### Watchdog Protection System
-
-The BQ25896 implements a sophisticated watchdog system that:
-
-- **Prevents System Lock-up**:
-  - Requires periodic communication
-  - Automatically resets to safe state if communication fails
-  - Protects against software failures
-
-- **Timer Operation**:
-  - Must be reset periodically (WD_RST)
-  - Configurable timeout periods
-  - Automatic safety actions on timeout
-  - Affects charging and configuration states
-
-- **Safety Features**:
-  - Automatic charge termination on timeout
-  - Reset to default configuration
-  - Fault reporting
-  - Communication monitoring
-
-### Battery Load Testing
-
-The battery load (IBATLOAD) feature provides:
-
-- **Controlled Discharge Testing**:
-  - Programmable discharge current
-  - Accurate capacity measurement
-  - Battery health assessment
-  - Performance verification
-
-- **Applications**:
-  - Capacity verification
-  - Internal resistance measurement
-  - Age-related degradation assessment
-  - Quality control testing
-
-### System Voltage Regulation
-
-The system voltage regulation feature ensures:
-
-- **Dynamic Voltage Control**:
-  - Maintains minimum system voltage (SYS_MIN)
-  - Prevents battery over-discharge
-  - Supports various system requirements
-  - Automatic source switching
-
-- **Operation Modes**:
-  - Buck mode (charging)
-  - Boost mode (OTG)
-  - Pass-through mode
-  - Battery-only mode
-
-- **Protection Features**:
-  - Under-voltage lockout
-  - Over-voltage protection
-  - Current limiting
-  - Thermal regulation
-
-### Boost Mode Operation
-
-The boost mode (OTG) feature includes:
-
-- **Voltage Boost**:
-  - Converts battery voltage to higher system voltage
-  - Regulated output for external devices
-  - Configurable voltage levels
-  - Current-limited operation
-
-- **Protection Mechanisms**:
-  - Minimum battery voltage monitoring (MIN_VBAT_SEL)
-  - Over-current protection
-  - Thermal monitoring
-  - Input voltage supervision
-
-- **Applications**:
-  - USB OTG power source
-  - External device charging
-  - Backup power systems
-  - Portable power bank functionality
+[Add usage examples here]
