@@ -14,10 +14,6 @@
 extern "C" {
 #endif
 
-/** 
- * @brief Default I2C address for BQ25896 (7-bit)
- */
-#define BQ25896_I2C_ADDR_DEFAULT  0x6B
 
 /**
  * @brief Handle to BQ25896 device
@@ -28,11 +24,10 @@ typedef struct bq25896_dev_t* bq25896_handle_t;
  * @brief Initialize the BQ25896 driver
  * 
  * @param i2c_bus I2C bus handle
- * @param dev_addr I2C device address (7-bit)
  * @param handle Pointer to store the device handle
  * @return esp_err_t ESP_OK on success, error otherwise
  */
-esp_err_t bq25896_init(i2c_master_bus_handle_t i2c_bus, uint8_t dev_addr, bq25896_handle_t *handle);
+esp_err_t bq25896_init(i2c_master_bus_handle_t i2c_bus, bq25896_handle_t *handle);
 
 /**
  * @brief Delete the BQ25896 driver instance and free resources
@@ -229,7 +224,7 @@ esp_err_t bq25896_set_vindpm_offset(bq25896_handle_t handle, bq25896_vindpm_os_t
  * @brief ADC conversion control state
  */
 typedef enum {
-    BQ25896_ADC_CONV_STOP  = 0, // Stop ADC conversion
+    BQ25896_ADC_CONV_STOP  = 0, // Stop ADC conversion (default)
     BQ25896_ADC_CONV_START = 1  // Start ADC conversion
 } bq25896_adc_conv_state_t;
 
@@ -254,7 +249,7 @@ typedef enum {
  */
 typedef enum {
     BQ25896_ICO_DISABLE = 0, // Input Current Optimizer disabled
-    BQ25896_ICO_ENABLE = 1   // Input Current Optimizer enabled
+    BQ25896_ICO_ENABLE = 1   // Input Current Optimizer enabled (default)
 } bq25896_ico_state_t;
 
 /**
@@ -347,8 +342,8 @@ typedef enum {
  * @brief Watchdog Timer Reset state
  */
 typedef enum {
-    BQ25896_WD_NORMAL = 0, // Normal operation (default)
-    BQ25896_WD_RESET = 1   // Reset watchdog timer (auto-clears)
+    BQ25896_WD_RST_NORMAL = 0, // Normal operation (default)
+    BQ25896_WD_RST_RESET = 1   // Reset watchdog timer (auto-clears)
 } bq25896_wd_rst_state_t;
 
 /**
@@ -843,6 +838,14 @@ esp_err_t bq25896_set_treg(bq25896_handle_t handle, bq25896_treg_t treg);
 /* ####################################################
 *                  REGISTER 09h
 #################################################### */
+/**
+ * @brief Force Start Input Current Optimizer (ICO)
+ */
+typedef enum {
+    BQ25896_ICO_NOT_FORCE = 0,  // Not force start Input Current Optimizer (ICO)
+    BQ25896_ICO_FORCE = 1    // Force start Input Current Optimizer (ICO)
+} bq25896_ico_force_start_t;
+
 /**
  * @brief Safety Timer Extension Setting (REG09 [6])
  */
@@ -1454,8 +1457,6 @@ esp_err_t bq25896_get_ts_profile(bq25896_handle_t handle, uint8_t *ts_profile);
  * @return esp_err_t ESP_OK on success, error otherwise
  */
 esp_err_t bq25896_get_device_revision(bq25896_handle_t handle, bq25896_dev_rev_t *dev_rev);
-
-
 
 
 #ifdef __cplusplus

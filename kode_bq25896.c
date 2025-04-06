@@ -14,101 +14,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#define TAG "bq25896 Driver"
 
+static esp_err_t bq25896_read_reg(bq25896_handle_t handle, uint8_t reg, uint8_t *data);
+static esp_err_t bq25896_write_reg(bq25896_handle_t handle, uint8_t reg, uint8_t data);
+static esp_err_t bq25896_update_bits(bq25896_handle_t handle, uint8_t reg, uint8_t mask, uint8_t value);
 
-// Helper function to read register
-static esp_err_t bq25896_read_reg(bq25896_handle_t handle, uint8_t reg, uint8_t *data)
-{
-    if (handle == NULL || data == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    uint8_t buffer = 0;
-    esp_err_t ret;
-    i2c_master_bus_handle_t i2c_bus = handle->i2c_bus;
-    
-    i2c_master_dev_handle_t dev_handle;
-    i2c_device_config_t dev_cfg = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = handle->dev_addr,
-        .scl_speed_hz = 400000,  // Standard 400KHz I2C speed
-    };
-    
-    ret = i2c_master_bus_add_device(i2c_bus, &dev_cfg, &dev_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to add device to I2C bus");
-        return ret;
-    }
-    
-    ret = i2c_master_transmit_receive(dev_handle, &reg, 1, &buffer, 1, -1);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to read register 0x%02X", reg);
-        i2c_master_bus_rm_device(dev_handle);
-        return ret;
-    }
-    
-    *data = buffer;
-    i2c_master_bus_rm_device(dev_handle);
-    return ESP_OK;
-}
-
-// Helper function to write register
-static esp_err_t bq25896_write_reg(bq25896_handle_t handle, uint8_t reg, uint8_t data)
-{
-    if (handle == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    esp_err_t ret;
-    i2c_master_bus_handle_t i2c_bus = handle->i2c_bus;
-    
-    i2c_master_dev_handle_t dev_handle;
-    i2c_device_config_t dev_cfg = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = handle->dev_addr,
-        .scl_speed_hz = 400000,  // Standard 400KHz I2C speed
-    };
-    
-    ret = i2c_master_bus_add_device(i2c_bus, &dev_cfg, &dev_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to add device to I2C bus");
-        return ret;
-    }
-    
-    uint8_t write_buf[2] = {reg, data};
-    ret = i2c_master_transmit(dev_handle, write_buf, sizeof(write_buf), -1);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to write register 0x%02X with value 0x%02X", reg, data);
-        i2c_master_bus_rm_device(dev_handle);
-        return ret;
-    }
-    
-    i2c_master_bus_rm_device(dev_handle);
-    return ESP_OK;
-}
-
-// Helper function to update bits in a register
-static esp_err_t bq25896_update_bits(bq25896_handle_t handle, uint8_t reg, uint8_t mask, uint8_t value)
-{
-    if (handle == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    uint8_t tmp;
-    esp_err_t ret;
-
-    ret = bq25896_read_reg(handle, reg, &tmp);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    tmp &= ~mask;
-    tmp |= (value & mask);
-
-    return bq25896_write_reg(handle, reg, tmp);
-}
-
-esp_err_t bq25896_init(i2c_master_bus_handle_t i2c_bus, uint8_t dev_addr, bq25896_handle_t *handle)
+esp_err_t bq25896_init(i2c_master_bus_handle_t i2c_bus, bq25896_handle_t *handle)
 {
     ESP_RETURN_ON_FALSE(i2c_bus != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid I2C bus handle");
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid output handle");
@@ -117,31 +29,59 @@ esp_err_t bq25896_init(i2c_master_bus_handle_t i2c_bus, uint8_t dev_addr, bq2589
     bq25896_handle_t dev = calloc(1, sizeof(struct bq25896_dev_t));
     ESP_RETURN_ON_FALSE(dev != NULL, ESP_ERR_NO_MEM, TAG, "Failed to allocate memory for BQ25896 device");
 
-    // Initialize the handle fields
+    // Initialize with default configuration
+    dev->config = BQ25896_DEFAULT_CONFIG();
     dev->i2c_bus = i2c_bus;
-    dev->dev_addr = dev_addr;
 
-    // Try to read register 14 (device ID) to confirm the device is accessible
-    uint8_t reg_value = 0;
-    esp_err_t ret = bq25896_read_reg(dev, 0x14, &reg_value);
+    // Add the device to the I2C bus
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = dev->config.dev_addr,
+        .scl_speed_hz = 400000,  // Standard 400KHz I2C speed
+    };
+    
+    i2c_master_dev_handle_t dev_handle;
+    esp_err_t ret = i2c_master_bus_add_device(i2c_bus, &dev_cfg, &dev_handle);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to read device ID register");
+        ESP_LOGE(TAG, "Failed to add device to I2C bus");
+        free(dev);
+        return ret;
+    }
+    
+    dev->dev_handle = dev_handle;  
+
+    // Try to read device part number to confirm the device is accessible
+    uint8_t part_number = 0;
+    ret = bq25896_get_part_number(dev, &part_number);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read device part number");
+        i2c_master_bus_rm_device(dev->dev_handle);
         free(dev);
         return ESP_ERR_NOT_FOUND;
     }
 
-    // Check for valid device ID
-    uint8_t part_number = (reg_value & BQ25896_REG14_PN_MASK) >> BQ25896_REG14_PN_SHIFT;
-    if (part_number != 0) {  // bq25896 has 000 for the part number
-        ESP_LOGE(TAG, "Device ID mismatch: expected 0, got %d", part_number);
+    // Check for valid device part number (should be 0 for BQ25896)
+    if (part_number != 0) {
+        ESP_LOGE(TAG, "Device part number mismatch: expected 0, got %d", part_number);
+        i2c_master_bus_rm_device(dev->dev_handle);
         free(dev);
         return ESP_ERR_INVALID_RESPONSE;
     }
 
+    // Read device revision
+    bq25896_dev_rev_t dev_rev;
+    ret = bq25896_get_device_revision(dev, &dev_rev);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read device revision");
+        i2c_master_bus_rm_device(dev->dev_handle);
+        free(dev);
+        return ret;
+    }
+
     // Success, return the handle
     *handle = dev;
-    ESP_LOGI(TAG, "BQ25896 initialized successfully, part rev: %d", 
-             reg_value & BQ25896_REG14_DEV_REV_MASK);
+    ESP_LOGD(TAG, "BQ25896 initialized successfully, part rev: %d", dev_rev);
+    ESP_LOGI(TAG, "BQ25896 initialized successfully, version: %d.%d.%d", ESP_BQ25896_VER_MAJOR, ESP_BQ25896_VER_MINOR, ESP_BQ25896_VER_PATCH);
     
     return ESP_OK;
 }
@@ -150,12 +90,14 @@ esp_err_t bq25896_delete(bq25896_handle_t handle)
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
     
+    // Remove the device from the I2C bus
+    if (handle->dev_handle != NULL) {
+        i2c_master_bus_rm_device(handle->dev_handle);
+    }
+    
     free(handle);
     return ESP_OK;
 }
-
-
-
 
 
 /* ####################################################
@@ -165,7 +107,6 @@ esp_err_t bq25896_set_hiz_mode(bq25896_handle_t handle, bq25896_hiz_state_t stat
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
     
-    // Update the register
     esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG00, 
                                        BQ25896_REG00_ENHIZ_MASK, 
                                        state == BQ25896_HIZ_ENABLE ? BQ25896_REG00_ENHIZ_MASK : 0);
@@ -174,7 +115,6 @@ esp_err_t bq25896_set_hiz_mode(bq25896_handle_t handle, bq25896_hiz_state_t stat
         return ret;
     }
     
-    // Update internal config
     handle->config.enable_hiz = (state == BQ25896_HIZ_ENABLE);
     
     ESP_LOGI(TAG, "HIZ mode %s", state == BQ25896_HIZ_ENABLE ? "enabled" : "disabled");
@@ -185,7 +125,6 @@ esp_err_t bq25896_set_ilim_pin(bq25896_handle_t handle, bq25896_ilim_pin_state_t
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
     
-    // Update the register
     esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG00, 
                                        BQ25896_REG00_EN_ILIM_MASK, 
                                        state == BQ25896_ILIM_PIN_ENABLE ? BQ25896_REG00_EN_ILIM_MASK : 0);
@@ -194,7 +133,6 @@ esp_err_t bq25896_set_ilim_pin(bq25896_handle_t handle, bq25896_ilim_pin_state_t
         return ret;
     }
     
-    // Update internal config
     handle->config.enable_ilim_pin = (state == BQ25896_ILIM_PIN_ENABLE);
     
     ESP_LOGI(TAG, "ILIM pin %s (current limit is %s by %s)", 
@@ -208,7 +146,6 @@ esp_err_t bq25896_set_input_current_limit(bq25896_handle_t handle, bq25896_ilim_
 {
     ESP_RETURN_ON_FALSE(handle != NULL, ESP_ERR_INVALID_ARG, TAG, "Invalid handle");
     
-    // Update the register
     esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG00, 
                                       BQ25896_REG00_IINLIM_MASK, 
                                       ilim);
@@ -229,7 +166,6 @@ esp_err_t bq25896_set_input_current_limit(bq25896_handle_t handle, bq25896_ilim_
     
     ESP_LOGI(TAG, "Input current limit set to %d mA", current_ma);
     
-    // Update internal config
     handle->config.input_current_limit = ilim;
     
     return ESP_OK;
@@ -252,7 +188,6 @@ esp_err_t bq25896_set_bhot_threshold(bq25896_handle_t handle, bq25896_bhot_t thr
         return ret;
     }
     
-    // Update internal config
     handle->config.bhot_threshold = threshold;
     
     const char* threshold_str;
@@ -317,8 +252,7 @@ esp_err_t bq25896_set_vindpm_offset(bq25896_handle_t handle, bq25896_vindpm_os_t
     
     ESP_LOGI(TAG, "VINDPM offset set to %d mV", offset_mv);
     
-    // Update internal config
-    handle->config.vindpm_offset_mv = offset_mv;
+    handle->config.vindpm_offset = offset_mv;
     
     return ESP_OK;
 }
@@ -373,8 +307,7 @@ esp_err_t bq25896_set_adc_conversion_rate(bq25896_handle_t handle, bq25896_adc_c
         return ret;
     }
     
-    // Update internal config
-    handle->config.adc_conv_rate = rate;
+    handle->config.conv_rate = rate;
     
     ESP_LOGI(TAG, "ADC conversion rate set to %s", 
              rate == BQ25896_ADC_CONV_RATE_ONESHOT ? "one shot" : "continuous");
@@ -394,8 +327,7 @@ esp_err_t bq25896_set_boost_frequency(bq25896_handle_t handle, bq25896_boost_fre
         return ret;
     }
     
-    // Update internal config
-    handle->config.boost_frequency = freq;
+    handle->config.boost_freq = freq;
     
     ESP_LOGI(TAG, "Boost frequency set to %s", 
              freq == BQ25896_BOOST_FREQ_1500KHZ ? "1.5MHz" : "500KHz");
@@ -416,8 +348,7 @@ esp_err_t bq25896_set_ico(bq25896_handle_t handle, bq25896_ico_state_t state)
         return ret;
     }
     
-    // Update internal config
-    handle->config.enable_ico = (state == BQ25896_ICO_ENABLE);
+    handle->config.ico_en = (state == BQ25896_ICO_ENABLE);
     
     ESP_LOGI(TAG, "Input Current Optimizer (ICO) %s", 
              state == BQ25896_ICO_ENABLE ? "enabled" : "disabled");
@@ -456,8 +387,7 @@ esp_err_t bq25896_set_auto_dpdm(bq25896_handle_t handle, bq25896_auto_dpdm_state
         return ret;
     }
     
-    // Update internal config
-    handle->config.auto_dpdm_detection = (state == BQ25896_AUTO_DPDM_ENABLE);
+    handle->config.auto_dpdm_en = (state == BQ25896_AUTO_DPDM_ENABLE);
     
     ESP_LOGI(TAG, "Automatic input detection %s", 
              state == BQ25896_AUTO_DPDM_ENABLE ? "enabled" : "disabled");
@@ -480,8 +410,7 @@ esp_err_t bq25896_set_bat_load(bq25896_handle_t handle, bq25896_bat_load_state_t
         return ret;
     }
     
-    // Update internal config
-    handle->config.enable_bat_load = (state == BQ25896_BAT_LOAD_ENABLE);
+    handle->config.bat_load = (state == BQ25896_BAT_LOAD_ENABLE);
     
     ESP_LOGI(TAG, "Battery load %s", state == BQ25896_BAT_LOAD_ENABLE ? "enabled" : "disabled");
     return ESP_OK;
@@ -494,7 +423,7 @@ esp_err_t bq25896_reset_watchdog(bq25896_handle_t handle)
     // Update the register - bit auto-clears after reset
     esp_err_t ret = bq25896_update_bits(handle, BQ25896_REG03, 
                                        BQ25896_REG03_WD_RST_MASK, 
-                                       BQ25896_WD_RESET << BQ25896_REG03_WD_RST_SHIFT);
+                                       BQ25896_WD_RST_RESET << BQ25896_REG03_WD_RST_SHIFT);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to reset watchdog timer");
         return ret;
@@ -517,8 +446,7 @@ esp_err_t bq25896_set_otg(bq25896_handle_t handle, bq25896_otg_state_t state)
         return ret;
     }
     
-    // Update internal config
-    handle->config.enable_otg = (state == BQ25896_OTG_ENABLE);
+    handle->config.otg_config = (state == BQ25896_OTG_ENABLE);
     
     ESP_LOGI(TAG, "OTG mode %s", state == BQ25896_OTG_ENABLE ? "enabled" : "disabled");
     return ESP_OK;
@@ -537,8 +465,7 @@ esp_err_t bq25896_set_charging(bq25896_handle_t handle, bq25896_chg_state_t stat
         return ret;
     }
     
-    // Update internal config
-    handle->config.enable_charging = (state == BQ25896_CHG_ENABLE);
+    handle->config.chg_config = (state == BQ25896_CHG_ENABLE);
     
     ESP_LOGI(TAG, "Charging %s", state == BQ25896_CHG_ENABLE ? "enabled" : "disabled");
     return ESP_OK;
@@ -557,8 +484,7 @@ esp_err_t bq25896_set_sys_min(bq25896_handle_t handle, bq25896_sys_min_t sys_min
         return ret;
     }
     
-    // Update internal config
-    handle->config.sys_min_voltage = sys_min;
+    handle->config.sys_min = sys_min;
     
     ESP_LOGI(TAG, "Minimum system voltage set to %d.%dV", 
              3 + (sys_min / 10), (sys_min % 10));
@@ -578,7 +504,6 @@ esp_err_t bq25896_set_min_vbat(bq25896_handle_t handle, bq25896_min_vbat_sel_t v
         return ret;
     }
     
-    // Update internal config
     handle->config.min_vbat_sel = (vbat_sel == BQ25896_MIN_VBAT_2500MV);
     
     ESP_LOGI(TAG, "Minimum battery voltage for boost mode exit set to %d.%dV", 
@@ -604,9 +529,6 @@ esp_err_t bq25896_set_pumpx(bq25896_handle_t handle, bq25896_pumpx_state_t state
                  state == BQ25896_PUMPX_ENABLE ? "enable" : "disable");
         return ret;
     }
-    
-    // Update internal config
-    handle->config.enable_pumpx = (state == BQ25896_PUMPX_ENABLE);
     
     ESP_LOGI(TAG, "Current pulse control %s", 
              state == BQ25896_PUMPX_ENABLE ? "enabled" : "disabled");
@@ -635,8 +557,7 @@ esp_err_t bq25896_set_charge_current(bq25896_handle_t handle, bq25896_ichg_t ich
     // Calculate actual current in mA
     uint16_t current_ma = ichg * 64;
     
-    // Update internal config
-    handle->config.charge_current_ma = current_ma;
+    handle->config.ichg = current_ma;
     
     ESP_LOGI(TAG, "Fast charge current limit set to %d mA", current_ma);
     return ESP_OK;
@@ -662,8 +583,7 @@ esp_err_t bq25896_set_precharge_current(bq25896_handle_t handle, bq25896_prechg_
     // Calculate actual current
     uint16_t actual_current = (current + 1) * 64;
     
-    // Update internal config
-    handle->config.prechg_current_ma = actual_current;
+    handle->config.iprechg = actual_current;
     
     ESP_LOGI(TAG, "Precharge current set to %dmA", actual_current);
     return ESP_OK;
@@ -685,8 +605,7 @@ esp_err_t bq25896_set_termination_current(bq25896_handle_t handle, bq25896_iterm
     // Calculate actual current
     uint16_t actual_current = (current + 1) * 64;
     
-    // Update internal config
-    handle->config.term_current_ma = actual_current;
+    handle->config.iterm = actual_current;
     
     ESP_LOGI(TAG, "Termination current set to %dmA", actual_current);
     return ESP_OK;
@@ -712,8 +631,7 @@ esp_err_t bq25896_set_charge_voltage(bq25896_handle_t handle, bq25896_vreg_t vre
     // Calculate actual voltage
     uint16_t actual_voltage = 3840 + (vreg * 16);
     
-    // Update internal config
-    handle->config.charge_voltage_mv = actual_voltage;
+    handle->config.vreg = actual_voltage;
     
     ESP_LOGI(TAG, "Charge voltage set to %dmV", actual_voltage);
     return ESP_OK;
@@ -732,7 +650,6 @@ esp_err_t bq25896_set_batlowv(bq25896_handle_t handle, bq25896_batlowv_t thresho
         return ret;
     }
     
-    // Update internal config
     handle->config.batlowv = threshold;
     
     ESP_LOGI(TAG, "BATLOWV threshold set to %dmV", 
@@ -753,7 +670,6 @@ esp_err_t bq25896_set_vrechg(bq25896_handle_t handle, bq25896_vrechg_t vrechg)
         return ret;
     }
     
-    // Update internal config
     handle->config.vrechg = vrechg;
     
     ESP_LOGI(TAG, "VRECHG threshold set to %dmV below VREG", 
@@ -778,8 +694,7 @@ esp_err_t bq25896_set_termination_state(bq25896_handle_t handle, bq25896_term_st
         return ret;
     }
     
-    // Update internal config
-    handle->config.termination_enabled = (state == BQ25896_TERM_ENABLE);
+    handle->config.en_term = (state == BQ25896_TERM_ENABLE);
     
     ESP_LOGI(TAG, "Charging termination %s", 
              state == BQ25896_TERM_ENABLE ? "enabled" : "disabled");
@@ -799,8 +714,7 @@ esp_err_t bq25896_set_stat_pin_state(bq25896_handle_t handle, bq25896_stat_pin_s
         return ret;
     }
     
-    // Update internal config
-    handle->config.stat_pin_enabled = (state == BQ25896_STAT_ENABLE);
+    handle->config.stat_dis = (state == BQ25896_STAT_ENABLE);
     
     ESP_LOGI(TAG, "STAT pin %s", 
              state == BQ25896_STAT_ENABLE ? "enabled" : "disabled");
@@ -820,7 +734,6 @@ esp_err_t bq25896_set_watchdog_timer(bq25896_handle_t handle, bq25896_watchdog_t
         return ret;
     }
     
-    // Update internal config
     handle->config.watchdog = watchdog;
     
     const char *watchdog_str;
@@ -849,8 +762,7 @@ esp_err_t bq25896_set_safety_timer_state(bq25896_handle_t handle, bq25896_safety
         return ret;
     }
     
-    // Update internal config
-    handle->config.safety_timer_enabled = (state == BQ25896_SAFETY_TIMER_ENABLE);
+    handle->config.en_timer = (state == BQ25896_SAFETY_TIMER_ENABLE);
     
     ESP_LOGI(TAG, "Safety timer %s", 
              state == BQ25896_SAFETY_TIMER_ENABLE ? "enabled" : "disabled");
@@ -870,7 +782,6 @@ esp_err_t bq25896_set_charge_timer(bq25896_handle_t handle, bq25896_chg_timer_t 
         return ret;
     }
     
-    // Update internal config
     handle->config.chg_timer = timer;
     
     const char *timer_str;
@@ -899,7 +810,6 @@ esp_err_t bq25896_set_jeita_iset(bq25896_handle_t handle, bq25896_jeita_iset_t i
         return ret;
     }
     
-    // Update internal config
     handle->config.jeita_iset = iset;
     
     ESP_LOGI(TAG, "JEITA low temperature current set to %d%% of ICHG", 
@@ -924,7 +834,6 @@ esp_err_t bq25896_set_bat_comp(bq25896_handle_t handle, bq25896_bat_comp_t bat_c
         return ret;
     }
     
-    // Update internal config
     handle->config.bat_comp = bat_comp;
     
     // Calculate actual value for logging
@@ -957,7 +866,6 @@ esp_err_t bq25896_set_vclamp(bq25896_handle_t handle, bq25896_vclamp_t vclamp)
         return ret;
     }
     
-    // Update internal config
     handle->config.vclamp = vclamp;
     
     // Calculate actual value for logging
@@ -990,7 +898,6 @@ esp_err_t bq25896_set_treg(bq25896_handle_t handle, bq25896_treg_t treg)
         return ret;
     }
     
-    // Update internal config
     handle->config.treg = treg;
     
     // Calculate actual value for logging
@@ -1040,8 +947,7 @@ esp_err_t bq25896_set_timer_extension(bq25896_handle_t handle, bq25896_tmr2x_t s
         return ret;
     }
     
-    // Update internal config
-    handle->config.tmr2x_enabled = (state == BQ25896_TMR2X_ENABLE);
+    handle->config.tmr2x_en = (state == BQ25896_TMR2X_ENABLE);
     
     ESP_LOGI(TAG, "Safety timer extension %s", 
              state == BQ25896_TMR2X_ENABLE ? "enabled" : "disabled");
@@ -1061,8 +967,7 @@ esp_err_t bq25896_set_batfet_state(bq25896_handle_t handle, bq25896_batfet_state
         return ret;
     }
     
-    // Update internal config
-    handle->config.batfet_disabled = (state == BQ25896_BATFET_DISABLE);
+    handle->config.batfet_dis = (state == BQ25896_BATFET_DISABLE);
     
     ESP_LOGI(TAG, "BATFET %s", 
              state == BQ25896_BATFET_ENABLE ? "enabled" : "disabled (ship mode)");
@@ -1082,7 +987,6 @@ esp_err_t bq25896_set_jeita_vset(bq25896_handle_t handle, bq25896_jeita_vset_t v
         return ret;
     }
     
-    // Update internal config
     handle->config.jeita_vset = vset;
     
     ESP_LOGI(TAG, "JEITA high temperature voltage set to %s", 
@@ -1103,7 +1007,6 @@ esp_err_t bq25896_set_batfet_delay(bq25896_handle_t handle, bq25896_batfet_dly_t
         return ret;
     }
     
-    // Update internal config
     handle->config.batfet_dly = delay;
     
     ESP_LOGI(TAG, "BATFET turn off delay %s", 
@@ -1124,7 +1027,6 @@ esp_err_t bq25896_set_batfet_reset(bq25896_handle_t handle, bq25896_batfet_rst_t
         return ret;
     }
     
-    // Update internal config
     handle->config.batfet_rst_en = reset;
     
     ESP_LOGI(TAG, "BATFET full system reset %s", 
@@ -1212,8 +1114,7 @@ esp_err_t bq25896_set_boost_voltage(bq25896_handle_t handle, bq25896_boostv_t bo
     // Calculate actual voltage for logging and config
     uint16_t actual_voltage = 4550 + (boostv * 64);
     
-    // Update internal config
-    handle->config.boost_voltage_mv = actual_voltage;
+    handle->config.boostv = actual_voltage;
     
     ESP_LOGI(TAG, "Boost mode voltage set to %dmV", actual_voltage);
     return ESP_OK;
@@ -1232,8 +1133,7 @@ esp_err_t bq25896_set_pfm_boost_mode(bq25896_handle_t handle, bq25896_pfm_boost_
         return ret;
     }
     
-    // Update internal config
-    handle->config.pfm_boost_disabled = (pfm_state == BQ25896_PFM_BOOST_DISABLE);
+    handle->config.pfm_otg_dis = (pfm_state == BQ25896_PFM_BOOST_DISABLE);
     
     ESP_LOGI(TAG, "PFM in boost mode %s", 
              pfm_state == BQ25896_PFM_BOOST_ALLOW ? "allowed" : "disabled");
@@ -1272,8 +1172,7 @@ esp_err_t bq25896_set_boost_current_limit(bq25896_handle_t handle, bq25896_boost
         default: actual_current = 0; break;
     }
     
-    // Update internal config
-    handle->config.boost_current_limit_ma = actual_current;
+    handle->config.boost_lim = actual_current;
     
     ESP_LOGI(TAG, "Boost mode current limit set to %dmA", actual_current);
     return ESP_OK;
@@ -1515,8 +1414,7 @@ esp_err_t bq25896_set_vindpm_mode(bq25896_handle_t handle, bq25896_force_vindpm_
         return ret;
     }
     
-    // Update internal config
-    handle->config.vindpm_mode = mode;
+    handle->config.force_vindpm = mode;
     
     ESP_LOGI(TAG, "VINDPM threshold setting method set to %s", 
              mode == BQ25896_VINDPM_RELATIVE ? "Relative" : "Absolute");
@@ -1570,8 +1468,7 @@ esp_err_t bq25896_set_absolute_vindpm(bq25896_handle_t handle, uint16_t threshol
     // Calculate actual threshold after clamping
     uint16_t actual_threshold = 2600 + (reg_val_vindpm * 100);
     
-    // Update internal config
-    handle->config.vindpm_absolute_mv = actual_threshold;
+    handle->config.vindpm = actual_threshold;
     
     ESP_LOGI(TAG, "Absolute VINDPM threshold set to %dmV", actual_threshold);
     return ESP_OK;
@@ -1958,6 +1855,69 @@ esp_err_t bq25896_get_device_revision(bq25896_handle_t handle, bq25896_dev_rev_t
 }
 
 
+/* ####################################################
+*                  STATIC FUNCTIONS
+#################################################### */
+static esp_err_t bq25896_read_reg(bq25896_handle_t handle, uint8_t reg, uint8_t *data)
+{
+    if (handle == NULL || data == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint8_t buffer = 0;
+    esp_err_t ret;
+    
+    // Use the device handle that's already stored in the structure
+    ret = i2c_master_transmit_receive(handle->dev_handle, &reg, 1, &buffer, 1, -1);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read register 0x%02X", reg);
+        return ret;
+    }
+    
+    *data = buffer;
+    return ESP_OK;
+}
+
+static esp_err_t bq25896_write_reg(bq25896_handle_t handle, uint8_t reg, uint8_t data)
+{
+    if (handle == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t ret;
+    
+    // Prepare the write buffer (register address followed by data)
+    uint8_t write_buf[2] = {reg, data};
+    
+    // Use the persistent device handle from the structure
+    ret = i2c_master_transmit(handle->dev_handle, write_buf, sizeof(write_buf), -1);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write register 0x%02X with value 0x%02X", reg, data);
+        return ret;
+    }
+    
+    return ESP_OK;
+}
+
+static esp_err_t bq25896_update_bits(bq25896_handle_t handle, uint8_t reg, uint8_t mask, uint8_t value)
+{
+    if (handle == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint8_t tmp;
+    esp_err_t ret;
+
+    ret = bq25896_read_reg(handle, reg, &tmp);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    tmp &= ~mask;
+    tmp |= (value & mask);
+
+    return bq25896_write_reg(handle, reg, tmp);
+}
 
 
 
@@ -1967,8 +1927,6 @@ esp_err_t bq25896_get_device_revision(bq25896_handle_t handle, bq25896_dev_rev_t
 
 
 
-
-// TBD -- ADD BBITS NAMES
 
 
 // /**

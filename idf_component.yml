@@ -1,5 +1,5 @@
 version: "1.0.0"
-description: ESP BQ25896 - Power Management Integrated Circuit (PMIC)
+description: BQ25896 - Power Management Integrated Circuit (PMIC)
 url: https://github.com/kodediy/kode_bq25896
 repository: https://github.com/kodediy/kode_bq25896.git
 issues: https://github.com/kodediy/kode_bq25896/issues

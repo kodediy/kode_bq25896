@@ -33,7 +33,58 @@ extern "C" {
 #define BQ25896_REG13       0x13
 #define BQ25896_REG14       0x14
 
+#define BQ25896_I2C_ADDR_DEFAULT  0x6B
 
+/**
+ * @brief Default configuration for BQ25896
+ * This initializes the config structure with the chip's default values
+ */
+#define BQ25896_DEFAULT_CONFIG() (bq25896_config_t) { \
+    .dev_addr = BQ25896_I2C_ADDR_DEFAULT, \
+    .enable_hiz = BQ25896_HIZ_DISABLE, /* HIZ mode disabled (default) */ \
+    .enable_ilim_pin = BQ25896_ILIM_PIN_ENABLE, /* ILIM pin enabled (default) */ \
+    .input_current_limit = BQ25896_ILIM_500MA, /* 500mA (default) */ \
+    .bhot_threshold = BQ25896_BHOT_THRESHOLD1, /* 34.75% (default) */ \
+    .bcold_threshold = BQ25896_BCOLD_THRESHOLD0, /* 77% (default) */ \
+    .vindpm_offset = BQ25896_VINDPM_OS_600MV, /* 600mV (default) */ \
+    .conv_start = BQ25896_ADC_CONV_STOP, /* ADC conversion not active (default) */ \
+    .conv_rate = BQ25896_ADC_CONV_RATE_ONESHOT, /* One shot ADC conversion (default) */ \
+    .boost_freq = BQ25896_BOOST_FREQ_1500KHZ, /* 1.5MHz (default) */ \
+    .ico_en = BQ25896_ICO_ENABLE, /* ICO enabled (default) */ \
+    .force_dpdm = BQ25896_FORCE_DPDM_DISABLE, /* Not in PSEL detection (default) */ \
+    .auto_dpdm_en = BQ25896_AUTO_DPDM_ENABLE, /* PSEL detection enabled when VBUS is plugged-in (default) */ \
+    .bat_load = BQ25896_BAT_LOAD_DISABLE, /* Battery load disabled (default) */ \
+    .wd_rst = BQ25896_WD_RST_NORMAL, /* Normal (default) */ \
+    .otg_config = BQ25896_OTG_DISABLE, /* OTG disabled (default) */ \
+    .chg_config = BQ25896_CHG_ENABLE, /* Charge enabled (default) */ \
+    .sys_min = BQ25896_SYS_MIN_3500MV, /* 3.5V (default) */ \
+    .min_vbat_sel = BQ25896_MIN_VBAT_2900MV, /* 2.9V (default) */ \
+    .ichg = BQ25896_ICHG_2048MA, /* 2048mA (default) */ \
+    .iprechg = BQ25896_PRECHG_128MA, /* 128mA (default) */ \
+    .iterm = BQ25896_ITERM_256MA, /* 256mA (default) */ \
+    .vreg = BQ25896_VREG_4208MV, /* 4.208V (default) */ \
+    .batlowv = BQ25896_BATLOWV_2800MV, /* 2.8V (default) */ \
+    .vrechg = BQ25896_VRECHG_100MV, /* 100mV (default) */ \
+    .en_term = BQ25896_TERM_ENABLE, /* Charging termination enabled (default) */ \
+    .stat_dis = BQ25896_STAT_ENABLE, /* STAT pin enabled (default) */ \
+    .watchdog = BQ25896_WATCHDOG_40S, /* 40s (default) */ \
+    .en_timer = BQ25896_SAFETY_TIMER_ENABLE, /* Charging safety timer enabled (default) */ \
+    .chg_timer = BQ25896_CHG_TIMER_12H, /* 12 hrs (default) */ \
+    .jeita_iset = BQ25896_JEITA_ISET_20PCT, /* 20% of ICHG (default) */ \
+    .bat_comp = BQ25896_BAT_COMP_0MO, /* IR compensation disabled (default) */ \
+    .vclamp = BQ25896_VCLAMP_0MV, /* IR compensation voltage clamp disabled (default) */ \
+    .treg = BQ25896_TREG_120C, /* 120C (default) */ \
+    .tmr2x_en = BQ25896_TMR2X_ENABLE, /* Timer2x enabled (default) */ \
+    .batfet_dis = BQ25896_BATFET_ENABLE, /* BatteryFET enabled (default) */ \
+    .jeita_vset = BQ25896_JEITA_VSET_REDUCED, /* Charge Voltage VREG-200mV (default) */ \
+    .batfet_dly = BQ25896_BATFET_DLY_DISABLE, /* BatteryFET delay disabled (default) */ \
+    .batfet_rst_en = BQ25896_BATFET_RST_ENABLE, /* BatteryFET reset enabled (default) */ \
+    .boostv = BQ25896_BOOSTV_4998MV, /* Boost voltage 4.998V (default) */ \
+    .pfm_otg_dis = BQ25896_PFM_BOOST_ALLOW, /* PFM boost allowed (default) */ \
+    .boost_lim = BQ25896_BOOST_LIM_1400MA, /* Boost current limit 1.4A (default) */ \
+    .force_vindpm = BQ25896_VINDPM_RELATIVE, /* VINDPM relative to VBUS (default) */ \
+    .vindpm = 0x12 /* VINDPM 4.4V (default) */ \
+}
 
 
 /* ####################################################
@@ -648,7 +699,7 @@ uint16_t bq25896_sysv_to_mv(uint8_t sysv_reg_val)
 
 /* ####################################################
 *                  REGISTER 10h
-#################################################### *//**
+#################################################### */
 /**
  * @brief Register 10h (TS Voltage / THERM_STAT Register) bit definitions
  * 
@@ -825,17 +876,70 @@ uint16_t bq25896_idpm_lim_to_ma(uint8_t idpm_lim_reg_val)
 #define BQ25896_REG14_DEV_REV_SHIFT      0
 
 
-
-
-
+/* ####################################################
+*                  CONFIGURATION STRUCTURE
+#################################################### */
+/**
+ * @brief BQ25896 configuration structure
+ */
+typedef struct {
+    uint8_t dev_addr;                    /*!< I2C device address */
+    bq25896_hiz_state_t enable_hiz;       /*!< HIZ mode enabled/disabled */
+    bq25896_ilim_pin_state_t enable_ilim_pin; /*!< ILIM pin enabled/disabled */
+    bq25896_ilim_t input_current_limit;  /*!< Input current limit setting */
+    bq25896_bhot_t bhot_threshold;       /*!< Boost hot temperature threshold */
+    bq25896_bcold_t bcold_threshold;     /*!< Boost cold temperature threshold */
+    bq25896_vindpm_os_t vindpm_offset;   /*!< VINDPM offset */
+    bq25896_adc_conv_state_t conv_start;     /*!< ADC conversion start setting */
+    bq25896_adc_conv_rate_t conv_rate;       /*!< ADC conversion rate setting */
+    bq25896_boost_freq_t boost_freq;       /*!< Boost frequency setting */
+    bq25896_ico_state_t ico_en;         /*!< Input Current Optimizer (ICO) enabled/disabled */
+    bq25896_force_dpdm_state_t force_dpdm; /*!< Force DPDM enabled/disabled */
+    bq25896_auto_dpdm_state_t auto_dpdm_en; /*!< Auto DPDM enabled/disabled */
+    bq25896_bat_load_state_t bat_load;     /*!< Battery load enabled/disabled */
+    bq25896_wd_rst_state_t wd_rst;     /*!< Watchdog reset setting */
+    bq25896_otg_state_t otg_config;     /*!< OTG configuration */
+    bq25896_chg_state_t chg_config;     /*!< Charge configuration */
+    bq25896_sys_min_t sys_min;     /*!< System minimum voltage setting */
+    bq25896_min_vbat_sel_t min_vbat_sel;     /*!< Minimum battery voltage setting */
+    bq25896_pumpx_state_t en_pumpx;     /*!< Current pulse control enabled/disabled */
+    bq25896_ichg_t ichg;     /*!< Charge current setting */
+    bq25896_prechg_current_t iprechg;     /*!< Pre-charge current setting */
+    bq25896_iterm_current_t iterm;     /*!< Termination current setting */
+    bq25896_vreg_t vreg;     /*!< Regulator voltage setting */
+    bq25896_batlowv_t batlowv;     /*!< Battery low voltage setting */
+    bq25896_vrechg_t vrechg;     /*!< Recharge voltage setting */
+    bq25896_term_state_t en_term;     /*!< Termination enabled/disabled */
+    bq25896_stat_pin_state_t stat_dis;     /*!< STAT pin enabled/disabled */
+    bq25896_watchdog_t watchdog;     /*!< Watchdog timeout setting */
+    bq25896_safety_timer_state_t en_timer;     /*!< Safety timer enabled/disabled */
+    bq25896_chg_timer_t chg_timer;     /*!< Charge timer setting */
+    bq25896_jeita_iset_t jeita_iset;     /*!< JEITA ISET setting */
+    bq25896_bat_comp_t bat_comp;     /*!< Battery compensation setting */
+    bq25896_vclamp_t vclamp;     /*!< Voltage clamp setting */
+    bq25896_treg_t treg;     /*!< Temperature regulation setting */
+    bq25896_ico_force_start_t force_ico;     /*!< Force ICO setting */
+    bq25896_tmr2x_t tmr2x_en;     /*!< Timer2x setting */
+    bq25896_batfet_state_t batfet_dis;     /*!< BatteryFET enabled/disabled */
+    bq25896_jeita_vset_t jeita_vset;     /*!< JEITA VSET setting */
+    bq25896_batfet_dly_t batfet_dly;     /*!< BatteryFET delay setting */
+    bq25896_batfet_rst_t batfet_rst_en;     /*!< BatteryFET reset enabled/disabled */
+    bq25896_boostv_t boostv;     /*!< Boost voltage setting */
+    bq25896_pfm_boost_t pfm_otg_dis;     /*!< PFM boost setting */
+    bq25896_boost_lim_t boost_lim;     /*!< Boost limit setting */
+    bq25896_force_vindpm_t force_vindpm;     /*!< Force VINDPM setting */
+    uint8_t vindpm;     /*!< VINDPM setting */    
+} bq25896_config_t;
 
 /**
  * @brief BQ25896 device structure
  */
 struct bq25896_dev_t {
     i2c_master_bus_handle_t i2c_bus;         /*!< I2C bus handle */
+    i2c_master_dev_handle_t dev_handle;      /*!< I2C device handle */
     bq25896_config_t config;                  /*!< Current configuration */
 };
+
 
 #ifdef __cplusplus
 }

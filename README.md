@@ -1,10 +1,54 @@
-# kode_bq25896
+# BQ25896 PMIC
 
-ESP-IDF component for the BQ25896 battery charger IC.
+[![Component Registry](https://components.espressif.com/components/kodediy/kode_bq25896/badge.svg)](https://components.espressif.com/components/kodediy/kode_bq25896)
 
-## Overview
+The BQ25896 is a high-efficiency single-cell Li-Ion/Li-Polymer battery charger and system power path management IC (PMIC) from Texas Instruments. This ESP-IDF component provides a complete API for configuring and controlling the BQ25896 via I2C.
 
-The BQ25896 is a high-efficiency single-cell Li-Ion/Li-Polymer battery charger and system power path management IC from Texas Instruments. This ESP-IDF component provides a complete API for configuring and controlling the BQ25896 via I2C.
+| PMIC | Communication interface | Component name | Link to datasheet |
+| :------------: | :---------------------: | :------------: | :---------------: |
+| BQ25896         | I2C                     | kode_bq25896      | [PDF](https://github.com/kodediy/kode_bq25896/blob/main/BQ25896_Datasheet_RevC.pdf) |
+
+## Add to project
+
+Packages from this repository are uploaded to [Espressif's component service](https://components.espressif.com/).
+You can add them to your project via `idf.py add-dependancy`, e.g.
+```
+    idf.py add-dependency kode_bq25896==1.0.0
+```
+
+Alternatively, you can create `idf_component.yml`. More is in [Espressif's documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-guides/tools/idf-component-manager.html).
+
+## Example use
+
+```c
+ESP_LOGI(TAG, "Starting BQ25896 PMIC initialization");
+// Initialize I2C bus
+i2c_master_bus_handle_t i2c_bus = NULL;
+i2c_master_bus_config_t i2c_bus_config = {
+    .clk_source = I2C_CLK_SRC_DEFAULT,
+    .i2c_port = I2C_NUM_0,
+    .scl_io_num = I2C_MASTER_SCL_IO,
+    .sda_io_num = I2C_MASTER_SDA_IO,
+    .glitch_ignore_cnt = 7,
+    .flags.enable_internal_pullup = true,
+};
+
+esp_err_t ret = i2c_new_master_bus(&i2c_bus_config, &i2c_bus);
+if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to initialize I2C bus: %s", esp_err_to_name(ret));
+    return;
+}
+ESP_LOGI(TAG, "I2C bus initialized successfully");
+// Initialize BQ25896 PMIC with default configuration
+bq25896_handle_t bq_handle = NULL;
+ret = bq25896_init(i2c_bus, &bq_handle);
+if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to initialize BQ25896: %s", esp_err_to_name(ret));
+    i2c_del_master_bus(i2c_bus);
+    return;
+}
+ESP_LOGI(TAG, "BQ25896 initialized successfully with default configuration");
+```
 
 ## Register Reference
 
@@ -311,11 +355,3 @@ The BQ25896 contains the following registers:
   - 1: JEITA (default)
 - **DEV_REV** (Bits 1-0): Device Revision `R`
   - 10: Device Revision
-
-## Function Reference
-
-[Add function documentation here]
-
-## Examples
-
-[Add usage examples here]
