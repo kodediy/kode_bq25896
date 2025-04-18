@@ -81,7 +81,7 @@ esp_err_t bq25896_init(i2c_master_bus_handle_t i2c_bus, bq25896_handle_t *handle
     // Success, return the handle
     *handle = dev;
     ESP_LOGD(TAG, "BQ25896 initialized successfully, part rev: %d", dev_rev);
-    ESP_LOGI(TAG, "BQ25896 initialized successfully, version: %d.%d.%d", ESP_BQ25896_VER_MAJOR, ESP_BQ25896_VER_MINOR, ESP_BQ25896_VER_PATCH);
+    ESP_LOGI(TAG, "BQ25896 initialized successfully, version: %d.%d.%d", KODE_BQ25896_VER_MAJOR, KODE_BQ25896_VER_MINOR, KODE_BQ25896_VER_PATCH);
     
     return ESP_OK;
 }
